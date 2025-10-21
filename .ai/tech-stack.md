@@ -4,11 +4,8 @@
 - **Framework:** FastAPI
 - **Serwer ASGI:** Uvicorn
 - **ORM:** SQLAlchemy
-- **Migracje bazy danych:** Alembic
 - **Walidacja danych:** Pydantic
-- **Panel Admina:** SQLAdmin
 - **Interakcja z Telegramem:** `python-telegram-bot`
-- **Logi** sentry-sdk
 
 ---
 
@@ -23,15 +20,13 @@
 
 ### **Frontend**
 
-- **Framework:** React.js
-- **Stylizacja:** Tailwind CSS
+Astro 5, TypeScript 5, React 19, Tailwind 4
 
 ---
 
 ### **Baza Danych i Przechowywanie**
 
-- **Baza danych:** PostgreSQL
-- **Railway**
+- **Baza danych:** Supabase
 
 ---
 
