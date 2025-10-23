@@ -1,0 +1,51 @@
+---
+alwaysApply: true
+---
+
+# AI Rules for Bills
+
+Bills is an application for automatic personal expense tracking that uses a Telegram bot as the main interface. Users send receipt photos, and the system automatically reads items using OCR (PaddlePaddle), categorizes them using AI (OpenAI), and saves them to a database. The application operates on a freemium model with a monthly limit of 100 receipts and additionally offers a simple "read-only" web application for visualizing expense summaries. The goal is to automate the process of tracking daily expenses with minimal user effort.
+
+## Tech Stack
+
+- Astro 5
+- TypeScript 5
+- React 19
+- Tailwind 4
+- Shadcn/ui
+- PaddlePaddle
+- FastApi
+- Supabase
+
+## Project Structure
+
+When introducing changes to the project, always follow the directory structure below:
+
+- `./astro/src` - source code
+- `./astro/src/layouts` - Astro layouts
+- `./astro/src/pages` - Astro pages
+- `./astro/src/pages/api` - API endpoints
+- `./astro/src/middleware/index.ts` - Astro middleware
+- `./astro/src/db` - Supabase clients and types
+- `./astro/src/types.ts` - Shared types for backend and frontend (Entities, DTOs)
+- `./astro/src/components` - Client-side components written in Astro (static) and React (dynamic)
+- `./astro/src/components/ui` - Client-side components from Shadcn/ui
+- `./astro/src/lib` - Services and helpers
+- `./astro/src/assets` - static internal assets
+- `./astro/public` - public assets
+
+When modifying the directory structure, always update this section.
+
+## Coding practices
+
+### Guidelines for clean code
+
+- Use feedback from linters to improve the code when making changes.
+- Prioritize error handling and edge cases.
+- Handle errors and edge cases at the beginning of functions.
+- Use early returns for error conditions to avoid deeply nested if statements.
+- Place the happy path last in the function for improved readability.
+- Avoid unnecessary else statements; use if-return pattern instead.
+- Use guard clauses to handle preconditions and invalid states early.
+- Implement proper error logging and user-friendly error messages.
+- Consider using custom error types or error factories for consistent error handling.
