@@ -14,3 +14,4 @@ alwaysApply: false
 - Leverage FastAPI's background tasks for non-critical operations that don't need to block the response
 - Implement proper exception handling with HTTPException and custom exception handlers for {{error_scenarios}}
 - Use path operation decorators consistently with appropriate HTTP methods (GET for retrieval, POST for creation, etc.)
+- Always use virtual enviroment venv\Scripts\activate
