@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from app.config import settings
+from src.config import settings
 
    # Convert postgresql:// to postgresql+asyncpg://
 database_url = settings.DATABASE_URL.replace(
@@ -11,7 +11,7 @@ engine = create_async_engine(
     database_url,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
-    echo=settings.APP_ENV == "development",
+    echo=settings.ENV == "development",
 )
 
 AsyncSessionLocal = async_sessionmaker(
