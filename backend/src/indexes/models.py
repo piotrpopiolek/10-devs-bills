@@ -2,24 +2,26 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.db.main import Base
+from src.categories.models import Category
 
-
-class Category(Base):
+class Index(Base):
     """
-    Category model representing hierarchical product categories.
+    Index model representing normalized products in the dictionary.
     
     Attributes:
         id: Primary key
-        name: Category name (unique)
-        parent_id: Foreign key to parent category (nullable for root categories)
+        name: Product name (unique)
+        synonyms: JSONB field for product synonyms
+        category_id: Foreign key to category
         created_at: Timestamp of creation
         updated_at: Timestamp of last update
     """
-    __tablename__ = "categories"
+    __tablename__ = "indexes"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False, index=True)
-    parent_id = Column(
+    synonyms = Column(JSON, nullable=True)  # JSONB in PostgreSQL
+    category_id = Column(
         Integer,
         ForeignKey("categories.id", ondelete="RESTRICT"),
         nullable=True,
@@ -38,21 +40,7 @@ class Category(Base):
     )
 
     # Relationships
-    parent = relationship(
+    category = relationship(
         "Category",
-        remote_side=[id],
-        back_populates="children"
+        back_populates="indexes"
     )
-    children = relationship(
-        "Category",
-        back_populates="parent"
-    )
-    indexes = relationship(
-        "Index",
-        back_populates="category",
-        lazy="select"
-    )
-
-
-
-
