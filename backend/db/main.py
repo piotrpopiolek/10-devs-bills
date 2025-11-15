@@ -1,9 +1,6 @@
-from sqlmodel import SQLModel
-from sqlalchemy.ext.asyncio import create_async_engine
-from src.db.models import *
-from src.config import Config
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+from app.config import settings
 
    # Convert postgresql:// to postgresql+asyncpg://
 database_url = settings.DATABASE_URL.replace(
@@ -11,22 +8,22 @@ database_url = settings.DATABASE_URL.replace(
 )
 
 engine = create_async_engine(
-    Config.DATABASE_URL,
-    echo=True # Set to True for debugging, False for production
+    database_url,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    echo=settings.APP_ENV == "development",
 )
 
-async def init_db():
-    """
-    Initialize the database.
-    """
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+AsyncSessionLocal = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
-async def get_session() -> AsyncSession:
-    Session = sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
-    async with Session() as session:
-        yield session
+Base = declarative_base()
+
+# Dependency for FastAPI
+async def get_db() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

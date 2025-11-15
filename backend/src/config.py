@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # App
-    APP_ENV: str = "development"
-    APP_PORT: int = 8000
+    ENV: str
+    PORT: int
     
     # Database (Supabase PostgreSQL)
     DATABASE_URL: str
@@ -25,5 +25,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
     CELERY_RESULT_BACKEND: str = "rpc://"
     
-    class Config:
-        env_file = ".env"
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore" 
+    }
+
+settings = Settings()
