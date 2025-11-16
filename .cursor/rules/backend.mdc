@@ -8,10 +8,68 @@ alwaysApply: false
 
 #### Backend FASTAPI
 
-- Use Pydantic models for request and response validation with strict type checking and custom validators
-- Implement dependency injection for services and database sessions to improve testability and resource management
-- Use async endpoints for I/O-bound operations to improve throughput for {{high_load_endpoints}}
-- Leverage FastAPI's background tasks for non-critical operations that don't need to block the response
-- Implement proper exception handling with HTTPException and custom exception handlers for {{error_scenarios}}
-- Use path operation decorators consistently with appropriate HTTP methods (GET for retrieval, POST for creation, etc.)
-- Always use virtual enviroment venv\Scripts\activate
+- Use Pydantic models as the primary validation mechanism, enforcing strict=True for API requests. Additionally, use Pydantic to validate and parse all responses from external AI systems (LLMs) to ensure type safety and protect against erroneous output.
+- Use async SQLAlchemy for implement dependency injection for services and database sessions to improve testability and resource management.
+- Use async endpoints for I/O-bound operations to improve throughput for {{high_load_endpoints}}.
+- Use FastAPI BackgroundTasks only for non-critical, instantaneous “fire-and-forget” operations, for critical, long-running, or distributed I/O-bound tasks, use Dramatiq.
+- Always use the virtual environment. If it is not active, activate venv\Scripts\activate.
+- Use path operation decorators consistently with appropriate HTTP methods (GET for retrieval, POST for creation, etc.).
+- Use DRY 
+Treat any code duplication introduced by AI (“cursor”) as a critical error at the code review level. The senior developer is responsible for aggressively and continuously refactoring duplications and replacing them with appropriate abstractions (functions, classes, dependencies) to prevent exponential growth of technical debt.
+- Use layered architecture (Service Layer) 
+Example
+src/categories/
+├── models.py      # Infrastructure Layer - SQLAlchemy (persistence)
+├── schemas.py     # Presentation Layer - Pydantic (API contracts)
+├── services.py    # Domain/Application Layer - Business logic
+└── routes.py      # Presentation Layer - HTTP 
+- Enforce SOLID principles in classes and services.
+S — Single Responsibility Principle
+O — Open/Closed Principle
+L — Liskov Substitution Principle
+I — Interface Segregation Principle
+D — Dependency Inversion Principle
+- To ensure eventual consistency in microservices architecture (EDA), implement distributed transactions using the SAGA pattern (Choreography or Orchestration) pattern. For reliable publication of domain events that trigger Saga steps, use the Transactional Outbox pattern to atomically bind state changes to outgoing events and avoid the double-write problem.
+- Use SAGA & Outbox
+┌─────────────────┐
+│  Application    │
+│  (FastAPI)      │
+└────────┬────────┘
+         │
+         │ 1. Transaction
+         ▼
+┌─────────────────────────────────┐
+│  PostgreSQL                     │
+│  ┌──────────┐  ┌──────────────┐ │
+│  │  bills  │  │  outbox       │ │
+│  │          │  │  - id        │ │
+│  │  id: 1   │  │  - event_type│ │
+│  │  ...     │  │  - payload   │ │
+│  └──────────┘  │  - status    │ │
+│                │  - created_at│ │
+│                └──────────────┘ │
+└─────────────────────────────────┘
+         │
+         │ 2. Polling/Polling
+         ▼
+┌─────────────────┐
+│  Outbox Worker  │
+│  (Dramatiq)       │
+└────────┬────────┘
+         │
+         │ 3. Publish
+         ▼
+┌─────────────────┐
+│  RabbitMQ       │
+│  (Event Broker) │
+└─────────────────┘
+- Select an LLM integration framework based on a specific use case, rather than imposing a single solution. 
+Consider:
+LlamaIndex for advanced or custom RAG systems.
+Pydantic.ai (or similar) for interactions based on strict schemas and output validation.   
+LangChain for rapid prototyping of complex, multi-step agents and systems based on multiple tools.
+- Implement the three pillars of observability (Logs, Metrics, Traces) using OpenTelemetry (OTEL) as a unified instrumentation layer. Configure OTEL to collect LLM-specific metrics (e.g., token consumption, latency, errors). Export metrics to Prometheus for storage, and use Grafana as a platform for visualisation and alerting.
+- Use Error handling separation
+Presentation layer – HTTPException errors
+Domain/Service layer – domain errors
+Global application level – global error handler
