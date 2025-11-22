@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING, List
+
+from sqlalchemy import Integer, String, DateTime, Boolean, BigInteger
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func, expression
+
+from src.db.main import Base
+
+if TYPE_CHECKING:
+    from src.bills.models import Bill
+    from src.product_index_aliases.models import ProductIndexAlias
+    from src.telegram.models import TelegramMessage 
+
+class User(Base):
+    """
+    User model representing a system user (linked mainly via Telegram).
+    """
+    __tablename__ = 'users'
+    
+    __table_args__ = (
+        {'comment': 'User accounts managed by Supabase Auth with Telegram external references'}
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    external_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True,comment='Telegram user ID for external authentication')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.true())
+    bills: Mapped[List['Bill']] = relationship('Bill', back_populates='user')
+    product_index_aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='user')
+    telegram_messages: Mapped[List['TelegramMessage']] = relationship('TelegramMessage', back_populates='user')
