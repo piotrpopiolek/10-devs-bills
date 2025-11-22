@@ -10,6 +10,34 @@ from src.indexes.models import Index
 from src.categories.schemas import CategoryResponse
 
 
+class CategoryNotFoundError(Exception):
+    """Raised when a category is not found in the database."""
+    pass
+
+
+async def validate_parent_category_exists(
+    session: AsyncSession,
+    parent_id: int
+) -> Category:
+    """
+    Validate that a parent category exists in the database.
+    
+    Args:
+        session: Database session
+        parent_id: Parent category ID to validate
+        
+    Returns:
+        Category model if found
+        
+    Raises:
+        CategoryNotFoundError: If parent category does not exist
+    """
+    parent_category = await session.get(Category, parent_id)
+    if not parent_category:
+        raise CategoryNotFoundError(f"Parent category with ID {parent_id} does not exist")
+    return parent_category
+
+
 async def get_categories(
     session: AsyncSession,
     parent_id: Optional[int] = None,
@@ -145,8 +173,8 @@ def build_category_hierarchy(
         # Build children list if include_children is True
         children = []
         if include_children:
-            # Use eager-loaded children if available, otherwise empty list
-            for child in getattr(category, 'children', []):
+            # Use eager-loaded children relationship
+            for child in category.children:
                 try:
                     child_response = build_tree(child, depth + 1)
                     children.append(child_response)

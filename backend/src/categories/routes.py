@@ -6,15 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from src.categories.schemas import CategoryListResponse, CategoryResponse
-from src.categories.models import Category
 from src.categories.services import (
     get_categories,
     count_products_per_category,
     build_category_hierarchy,
-    get_all_categories_for_hierarchy
+    get_all_categories_for_hierarchy,
+    validate_parent_category_exists,
+    CategoryNotFoundError
 )
 from src.db.main import get_session
 # TODO: Implement authentication dependency
+
+# TODO dodanie agenta który będzie sprawdzał pod kątem najbardziej pozadanych cech programisty
 # from src.deps import get_current_user
 # from src.users.models import User
 
@@ -103,19 +106,17 @@ async def get_categories_endpoint(
     Raises:
         HTTPException: 400 if parent_id doesn't exist, 500 on server errors
     """
-    # Guard clause: Validate parent_id exists if provided
-    if parent_id is not None:
-        parent_category = await session.get(Category, parent_id)
-        if not parent_category:
-            logger.warning(
-                f"Requested parent category ID {parent_id} does not exist"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Parent category with ID {parent_id} does not exist"
-            )
-    
     try:
+        # Guard clause: Validate parent_id exists if provided
+        if parent_id is not None:
+            try:
+                await validate_parent_category_exists(session, parent_id)
+            except CategoryNotFoundError as e:
+                logger.warning(str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e)
+                )
         # Fetch categories based on filters
         if include_children and parent_id is None:
             # For full hierarchy, fetch all categories
@@ -142,15 +143,8 @@ async def get_categories_endpoint(
         )
         
         # Build response
-        if include_children and parent_id is None:
-            # Build full hierarchy from all categories
-            category_responses = build_category_hierarchy(
-                categories,
-                products_count_map,
-                include_children=True
-            )
-        elif include_children and parent_id is not None:
-            # Build hierarchy starting from filtered categories
+        if include_children:
+            # Build hierarchical structure
             category_responses = build_category_hierarchy(
                 categories,
                 products_count_map,

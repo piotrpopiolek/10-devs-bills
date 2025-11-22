@@ -48,10 +48,10 @@ CREATE INDEX idx_categories_name ON categories(name);
 CREATE INDEX idx_categories_parent_id ON categories(parent_id);
 ```
 
-### Tabela: indexes (słownik produktów)
+### Tabela: product_indexes (słownik produktów)
 
 ```sql
-CREATE TABLE indexes (
+CREATE TABLE product_indexes (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     synonyms JSONB,
@@ -60,18 +60,18 @@ CREATE TABLE indexes (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_indexes_name ON indexes(name);
-CREATE INDEX idx_indexes_category_id ON indexes(category_id);
-CREATE INDEX idx_indexes_synonyms ON indexes USING GIN(synonyms);
+CREATE INDEX idx_product_indexes_name ON product_indexes(name);
+CREATE INDEX idx_product_indexes_category_id ON product_indexes(category_id);
+CREATE INDEX idx_product_indexes_synonyms ON product_indexes USING GIN(synonyms); -- GIN jest idealny do JSONB
 ```
 
-### Tabela: index_aliases (warianty OCR)
+### Tabela: product_indexes_aliases (warianty OCR)
 
 ```sql
-CREATE TABLE index_aliases (
+CREATE TABLE product_index_aliases (
     id SERIAL PRIMARY KEY,
     raw_name TEXT NOT NULL,
-    index_id INTEGER NOT NULL REFERENCES indexes(id) ON DELETE CASCADE,
+    index_id INTEGER NOT NULL REFERENCES product_indexes(id) ON DELETE CASCADE,
     confirmations_count INTEGER NOT NULL DEFAULT 0,
     first_seen_at TIMESTAMPTZ,
     last_seen_at TIMESTAMPTZ,
@@ -83,10 +83,10 @@ CREATE TABLE index_aliases (
     CONSTRAINT unique_raw_name_index UNIQUE (LOWER(raw_name), index_id)
 );
 
-CREATE INDEX idx_index_aliases_index_id ON index_aliases(index_id);
-CREATE INDEX idx_index_aliases_shop_id ON index_aliases(shop_id);
-CREATE INDEX idx_index_aliases_user_id ON index_aliases(user_id);
-CREATE INDEX idx_index_aliases_raw_name ON index_aliases USING GIN(LOWER(raw_name) gin_trgm_ops);
+CREATE INDEX idx_product_index_aliases_index_id ON product_index_aliases(index_id);
+CREATE INDEX idx_product_index_aliases_shop_id ON product_index_aliases(shop_id);
+CREATE INDEX idx_product_index_aliases_user_id ON product_index_aliases(user_id);
+CREATE INDEX idx_product_index_aliases_raw_name ON product_index_aliases USING GIN(LOWER(raw_name) gin_trgm_ops);
 ```
 
 ### Tabela: bills
@@ -132,7 +132,7 @@ CREATE TABLE bill_items (
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verification_source verification_source NOT NULL DEFAULT 'auto',
     bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
-    index_id INTEGER REFERENCES indexes(id) ON DELETE SET NULL,
+    index_id INTEGER REFERENCES product_indexes(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT check_quantity_positive CHECK (quantity > 0),
     CONSTRAINT check_unit_price_non_negative CHECK (unit_price >= 0),
@@ -180,16 +180,16 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 - `users` (1) → `telegram_messages` (N) przez `telegram_messages.user_id`
 - `shops` (1) → `bills` (N) przez `bills.shop_id`
 - `bills` (1) → `bill_items` (N) przez `bill_items.bill_id`
-- `indexes` (1) → `bill_items` (N) przez `bill_items.index_id`
-- `indexes` (1) → `index_aliases` (N) przez `index_aliases.index_id`
-- `categories` (1) → `indexes` (N) przez `indexes.category_id`
+- `product_indexes` (1) → `bill_items` (N) przez `bill_items.index_id`
+- `product_indexes` (1) → `product_index_aliases` (N) przez `product_index_aliases.index_id`
+- `categories` (1) → `product_indexes` (N) przez `product_indexes.category_id`
 - `categories` (1) → `categories` (N) przez `categories.parent_id` (hierarchia)
 - `telegram_messages` (N) → `bills` (1) przez `telegram_messages.bill_id` (opcjonalna)
 
 ### Relacje opcjonalne:
 
-- `shops` (1) → `index_aliases` (N) przez `index_aliases.shop_id`
-- `users` (1) → `index_aliases` (N) przez `index_aliases.user_id`
+- `shops` (1) → `product_index_aliases` (N) przez `product_index_aliases.shop_id`
+- `users` (1) → `product_index_aliases` (N) przez `product_index_aliases.user_id`
 
 ## 3. Indeksy
 
@@ -200,7 +200,7 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 - `idx_bills_status` - filtrowanie rachunków według statusu przetwarzania
 - `idx_bill_items_unverified` - workflow weryfikacji pozycji
 - `idx_telegram_messages_chat_id_created_at` - historia wiadomości w czacie
-- `idx_index_aliases_raw_name` - wyszukiwanie aliasów produktów (GIN z pg_trgm)
+- `idx_product_index_aliases_raw_name` - wyszukiwanie aliasów produktów (GIN z pg_trgm)
 
 ### Indeksy wspierające:
 
@@ -230,8 +230,8 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 
 ### Słownik produktów:
 
-- Tabela `indexes` jako "złota lista" znormalizowanych produktów
-- Tabela `index_aliases` dla wariantów OCR z licznikiem potwierdzeń
+- Tabela `product_indexes` jako "złota lista" znormalizowanych produktów
+- Tabela `product_index_aliases` dla wariantów OCR z licznikiem potwierdzeń
 - Unikalność `(LOWER(raw_name), index_id)` zapobiega duplikatom
 - GIN indeks z pg_trgm dla szybkiego wyszukiwania podobnych nazw
 
