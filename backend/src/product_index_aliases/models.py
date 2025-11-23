@@ -22,15 +22,39 @@ class ProductIndexAlias(Base):
     ProductIndexAlias model.
     Maps raw OCR text (e.g., "Mleko 3.2%") to a normalized ProductIndex.
     Acts as the system's learning memory.
+    
+    Attributes:
+        id: Primary key (auto-incremented)
+        raw_name: Raw OCR text (not nullable)
+        confirmations_count: Number of times this alias was confirmed as correct (not nullable, server default 0)
+        shop_id: Foreign key to shop (nullable, indexed)
+        user_id: Foreign key to user (nullable, indexed)
+        index_id: Foreign key to product index (not nullable, indexed)
+        locale: Locale of the alias (nullable, default 'pl_PL')
+        first_seen_at: Timestamp of first seen (nullable, server default now())
+        last_seen_at: Timestamp of last seen (nullable, onupdate=now())
+        created_at: Timestamp of creation (not nullable, server default now())
+        updated_at: Timestamp of last update (not nullable, server default now(), onupdate=now())
+        index: Reference to product index (self-referential)
+        shop: Reference to shop (back-populates 'product_index_aliases')
+        user: Reference to user (back-populates 'product_index_aliases')
     """
     __tablename__ = 'product_index_aliases'
     
     __table_args__ = (
-        Index('idx_product_index_aliases_raw_name', 'raw_name'),
+        # GIN indeks z trigram dla szybkiego fuzzy search na raw_name
+        # Wymaga w postgresie: CREATE EXTENSION pg_trgm;
+        # Uwaga: Dla wyrażeń funkcji (LOWER), definicja operator class musi być w migracji SQL
+        # W modelu definiujemy tylko podstawową strukturę indeksu
+        Index(
+            'idx_product_index_aliases_raw_name',
+            text('lower(raw_name)'),
+            postgresql_using='gin'
+        ),
         Index('idx_product_index_aliases_index_id', 'index_id'),
         Index('idx_product_index_aliases_shop_id', 'shop_id'),
         Index('idx_product_index_aliases_user_id', 'user_id'),
-        UniqueConstraint('raw_name', 'index_id', name='uq_alias_raw_name_index'),
+        UniqueConstraint(text('lower(raw_name)'), 'index_id', name='uq_alias_raw_name_index'),
         {'comment': 'OCR text variants linked to normalized products with confirmation tracking'}
     )
 

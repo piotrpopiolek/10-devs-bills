@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 from src.db.main import Base
 
 if TYPE_CHECKING:
-    from src.indexes.models import Index
+    from src.product_indexes.models import ProductIndex
 
 class Category(Base):
     """

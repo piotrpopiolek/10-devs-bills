@@ -17,6 +17,16 @@ if TYPE_CHECKING:
 class User(Base):
     """
     User model representing a system user (linked mainly via Telegram).
+
+    Attributes:
+        id: Primary key (auto-incremented)
+        external_id: External ID (not nullable, unique)
+        created_at: Timestamp of creation (not nullable, server default now())
+        updated_at: Timestamp of last update (not nullable, server default now(), onupdate=now())
+        is_active: User activity status (not nullable, default true)
+        bills: List of bills (back-populates 'user')
+        product_index_aliases: List of product index aliases (back-populates 'user')
+        telegram_messages: List of telegram messages (back-populates 'user')    
     """
     __tablename__ = 'users'
     

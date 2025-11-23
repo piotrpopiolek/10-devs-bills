@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 class Shop(Base):
     """
     Shop model representing a retail location.
+
+    Attributes:
+        id: Primary key (auto-incremented)
+        name: Name of the shop (not nullable, indexed)
+        address: Address of the shop (nullable)
+        created_at: Timestamp of creation (not nullable, server default now())
+        updated_at: Timestamp of last update (not nullable, server default now(), onupdate=now())
+        bills: List of bills (back-populates 'shop')
+        product_index_aliases: List of product index aliases (back-populates 'shop')
     """
     __tablename__ = 'shops'
     

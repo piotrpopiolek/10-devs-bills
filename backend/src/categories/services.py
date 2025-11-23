@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
 from src.categories.models import Category
-from src.indexes.models import Index
+from src.product_indexes.models import ProductIndex
 from src.categories.schemas import CategoryResponse
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 
-from sqlalchemy import ForeignKey, Integer, String, DateTime, Index
-from sqlalchemy.dialects.postgresql import JSONB, GIN
+from sqlalchemy import ForeignKey, Integer, String, DateTime, Index, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -12,12 +12,15 @@ from src.db.main import Base
 
 if TYPE_CHECKING:
     from src.categories.models import Category
+    from src.bill_items.models import BillItem
+    from src.product_index_aliases.models import ProductIndexAlias
 
 
 class ProductIndex(Base):
     """
-    Product index model representing a normalized product dictionary.
-    
+    ProductIndex model representing a normalized product dictionary (Golden Record).
+    Optimized for OCR matching (Trigram) and Data Integrity (Case-Insensitive Unique).
+
     Attributes:
         id: Primary key (auto-incremented)  
         name: Product name (unique, indexed) (not nullable)     
@@ -30,12 +33,29 @@ class ProductIndex(Base):
         product_index_aliases: List of product index aliases (back-populates 'index')
     """
     __tablename__ = 'product_indexes'
+    
     __table_args__ = (
-        # Indeks GIN dla JSONB - kluczowe dla wydajności wyszukiwania w JSON
-        Index('idx_product_indexes_synonyms', 'synonyms', postgresql_using='gin'),
+        # INDEKS TRAGRAMOWY (GIN) DLA NAZWY
+        # Pozwala na super szybkie fuzzy search i 'LIKE %text%'
+        # Wymaga w postgresie: CREATE EXTENSION pg_trgm;
+        Index(
+            'idx_product_indexes_name_trgm',
+            'name',
+            postgresql_using='gin',
+            postgresql_ops={'name': 'gin_trgm_ops'}
+        ),
+        Index(
+            'uq_product_indexes_name_lower',
+            text('lower(name)'),
+            unique=True
+        ),
+        Index(
+            'idx_product_indexes_synonyms', 
+            'synonyms', 
+            postgresql_using='gin'
+        ),
         Index('idx_product_indexes_category_id', 'category_id'),
-        Index('idx_product_indexes_name', 'name'),
-        {'comment': 'Normalized product dictionary with synonyms and category associations'}
+        {'comment': 'Normalized product dictionary with fuzzy search capabilities'}
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -45,5 +65,5 @@ class ProductIndex(Base):
     synonyms: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=True)
     category: Mapped[Optional['Category']] = relationship('Category', back_populates='product_indexes')
-    # bill_items: Mapped[List['BillItem']] = relationship('BillItem', back_populates='index')
-    # aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='index')
+    bill_items: Mapped[List['BillItem']] = relationship('BillItem', back_populates='index')
+    aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='index')
