@@ -2,9 +2,13 @@
 
 ## 1. Lista tabel z kolumnami, typami danych i ograniczeniami
 
-### Tabela: users
+**Wymagane rozszerzenia PostgreSQL:**
 
-This table is managed by Supabase Auth.
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm; -- Dla indeksów trigramowych (fuzzy search)
+```
+
+### Tabela: users
 
 ```sql
 CREATE TABLE users (
@@ -24,14 +28,16 @@ CREATE UNIQUE INDEX idx_users_external_id ON users(external_id);
 CREATE TABLE shops (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    address TEXT,
+    address VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_shop_name_address UNIQUE (LOWER(name), LOWER(COALESCE(address, '')))
+    CONSTRAINT uq_shops_name_address UNIQUE (name, address)
 );
 
-CREATE INDEX idx_shops_name ON shops(LOWER(name));
+CREATE INDEX idx_shops_name ON shops(name);
 ```
+
+**Uwaga:** Unique constraint na `(name, address)` bez funkcji LOWER - porównywanie jest case-sensitive. W praktyce aplikacja powinna normalizować dane przed zapisem.
 
 ### Tabela: categories
 
@@ -51,42 +57,48 @@ CREATE INDEX idx_categories_parent_id ON categories(parent_id);
 ### Tabela: product_indexes (słownik produktów)
 
 ```sql
+-- Wymaga: CREATE EXTENSION pg_trgm;
 CREATE TABLE product_indexes (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
     synonyms JSONB,
     category_id INTEGER REFERENCES categories(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_product_indexes_name ON product_indexes(name);
+-- Indeks trigramowy GIN dla szybkiego fuzzy search na nazwie produktu
+CREATE INDEX idx_product_indexes_name_trgm ON product_indexes USING GIN(name gin_trgm_ops);
+-- Unikalność na LOWER(name) zapewnia case-insensitive unique constraint
+CREATE UNIQUE INDEX uq_product_indexes_name_lower ON product_indexes(LOWER(name));
 CREATE INDEX idx_product_indexes_category_id ON product_indexes(category_id);
 CREATE INDEX idx_product_indexes_synonyms ON product_indexes USING GIN(synonyms); -- GIN jest idealny do JSONB
 ```
 
-### Tabela: product_indexes_aliases (warianty OCR)
+### Tabela: product_index_aliases (warianty OCR)
 
 ```sql
+-- Wymaga: CREATE EXTENSION pg_trgm;
 CREATE TABLE product_index_aliases (
     id SERIAL PRIMARY KEY,
     raw_name TEXT NOT NULL,
     index_id INTEGER NOT NULL REFERENCES product_indexes(id) ON DELETE CASCADE,
     confirmations_count INTEGER NOT NULL DEFAULT 0,
-    first_seen_at TIMESTAMPTZ,
+    first_seen_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ,
-    locale VARCHAR(10),
+    locale VARCHAR(10) DEFAULT 'pl_PL',
     shop_id INTEGER REFERENCES shops(id) ON DELETE SET NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_raw_name_index UNIQUE (LOWER(raw_name), index_id)
+    CONSTRAINT uq_alias_raw_name_index UNIQUE (LOWER(raw_name), index_id)
 );
 
 CREATE INDEX idx_product_index_aliases_index_id ON product_index_aliases(index_id);
 CREATE INDEX idx_product_index_aliases_shop_id ON product_index_aliases(shop_id);
 CREATE INDEX idx_product_index_aliases_user_id ON product_index_aliases(user_id);
-CREATE INDEX idx_product_index_aliases_raw_name ON product_index_aliases USING GIN(LOWER(raw_name) gin_trgm_ops);
+-- GIN indeks na LOWER(raw_name) dla szybkiego fuzzy search (wymaga pg_trgm)
+CREATE INDEX idx_product_index_aliases_raw_name ON product_index_aliases USING GIN(LOWER(raw_name));
 ```
 
 ### Tabela: bills
@@ -128,20 +140,20 @@ CREATE TABLE bill_items (
     unit_price NUMERIC(12,2) NOT NULL,
     total_price NUMERIC(12,2) NOT NULL,
     original_text TEXT,
-    confidence_score DECIMAL(3,2),
+    confidence_score NUMERIC(3,2), -- OCR confidence score (0.00-1.00)
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verification_source verification_source NOT NULL DEFAULT 'auto',
     bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
     index_id INTEGER REFERENCES product_indexes(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT check_quantity_positive CHECK (quantity > 0),
-    CONSTRAINT check_unit_price_non_negative CHECK (unit_price >= 0),
-    CONSTRAINT check_total_price_calculation CHECK (total_price = ROUND(quantity * unit_price, 2))
+    CONSTRAINT check_unit_price_non_negative CHECK (unit_price >= 0)
 );
 
 CREATE INDEX idx_bill_items_bill_id ON bill_items(bill_id);
 CREATE INDEX idx_bill_items_index_id ON bill_items(index_id);
-CREATE INDEX idx_bill_items_unverified ON bill_items(bill_id) WHERE is_verified = FALSE;
+-- Indeks częściowy dla niezweryfikowanych pozycji (workflow weryfikacji)
+CREATE INDEX idx_bill_items_unverified ON bill_items(is_verified) WHERE is_verified = FALSE;
 ```
 
 ### Tabela: telegram_messages
@@ -155,7 +167,7 @@ CREATE TABLE telegram_messages (
     telegram_message_id BIGINT NOT NULL UNIQUE,
     chat_id BIGINT NOT NULL,
     message_type telegram_message_type NOT NULL,
-    content TEXT NOT NULL,
+    content TEXT NOT NULL, -- Message text or caption
     file_id VARCHAR(255),
     file_path TEXT,
     status telegram_message_status NOT NULL DEFAULT 'sent',
@@ -166,8 +178,8 @@ CREATE TABLE telegram_messages (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX idx_telegram_messages_telegram_id ON telegram_messages(telegram_message_id);
-CREATE INDEX idx_telegram_messages_chat_id_created_at ON telegram_messages(chat_id, created_at DESC);
+-- Unique constraint na telegram_message_id jest zdefiniowany w kolumnie (UNIQUE)
+CREATE INDEX idx_telegram_messages_chat_id_created_at ON telegram_messages(chat_id, created_at);
 CREATE INDEX idx_telegram_messages_user_id ON telegram_messages(user_id);
 CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 ```
@@ -195,19 +207,21 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 
 ### Indeksy kluczowe dla wydajności:
 
-- `idx_users_external_id` - szybkie wyszukiwanie użytkowników po ID Telegram
+- `idx_users_external_id` - szybkie wyszukiwanie użytkowników po ID Telegram (unique)
 - `idx_bills_user_id_bill_date` - raporty wydatków użytkownika
 - `idx_bills_status` - filtrowanie rachunków według statusu przetwarzania
-- `idx_bill_items_unverified` - workflow weryfikacji pozycji
+- `idx_bill_items_unverified` - workflow weryfikacji pozycji (indeks częściowy)
 - `idx_telegram_messages_chat_id_created_at` - historia wiadomości w czacie
-- `idx_product_index_aliases_raw_name` - wyszukiwanie aliasów produktów (GIN z pg_trgm)
+- `idx_product_index_aliases_raw_name` - wyszukiwanie aliasów produktów (GIN na LOWER(raw_name))
+- `idx_product_indexes_name_trgm` - fuzzy search na nazwach produktów (GIN z pg_trgm)
 
 ### Indeksy wspierające:
 
 - `idx_shops_name` - wyszukiwanie sklepów
 - `idx_categories_parent_id` - nawigacja hierarchii kategorii
-- `idx_indexes_category_id` - produkty w kategorii
-- `idx_bills_image_expires_at` - retencja obrazów
+- `idx_product_indexes_category_id` - produkty w kategorii
+- `idx_bills_image_expires_at` - retencja obrazów (indeks częściowy)
+- `uq_product_indexes_name_lower` - unikalność nazw produktów (case-insensitive)
 
 ## 4. Zasady PostgreSQL (RLS)
 
@@ -219,8 +233,9 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 
 - **Kwoty:** `NUMERIC(12,2)` dla PLN z dokładnością do groszy
 - **Ilości:** `NUMERIC(10,4)` dla precyzyjnych pomiarów (kg, litry)
-- **Walidacja sum:** CHECK constraint zapewnia `total_price = ROUND(quantity * unit_price, 2)`
 - **Walidacja pozytywności:** CHECK constraints dla `quantity > 0` i `unit_price >= 0`
+- **Walidacja sum:** Walidacja `total_price = ROUND(quantity * unit_price, 2)` jest wykonywana na poziomie aplikacji (FastAPI)
+- **Confidence score:** `NUMERIC(3,2)` dla wyników OCR w zakresie 0.00-1.00
 
 ### Retencja obrazów:
 
@@ -231,9 +246,12 @@ CREATE INDEX idx_telegram_messages_bill_id ON telegram_messages(bill_id);
 ### Słownik produktów:
 
 - Tabela `product_indexes` jako "złota lista" znormalizowanych produktów
-- Tabela `product_index_aliases` dla wariantów OCR z licznikiem potwierdzeń
-- Unikalność `(LOWER(raw_name), index_id)` zapobiega duplikatom
-- GIN indeks z pg_trgm dla szybkiego wyszukiwania podobnych nazw
+- Tabela `product_index_aliases` dla wariantów OCR z licznikiem potwierdzeń (`confirmations_count`)
+- Unikalność `(LOWER(raw_name), index_id)` zapobiega duplikatom (case-insensitive)
+- GIN indeks na `LOWER(raw_name)` dla szybkiego wyszukiwania podobnych nazw (wymaga pg_trgm)
+- GIN indeks trigramowy na `name` w `product_indexes` dla fuzzy search
+- Unique constraint na `LOWER(name)` w `product_indexes` zapewnia case-insensitive unikalność
+- Domyślna wartość `locale` w `product_index_aliases`: 'pl_PL'
 
 ### Hierarchia kategorii:
 

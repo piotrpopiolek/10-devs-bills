@@ -38,22 +38,9 @@ class ProductIndex(Base):
         # INDEKS TRAGRAMOWY (GIN) DLA NAZWY
         # Pozwala na super szybkie fuzzy search i 'LIKE %text%'
         # Wymaga w postgresie: CREATE EXTENSION pg_trgm;
-        Index(
-            'idx_product_indexes_name_trgm',
-            'name',
-            postgresql_using='gin',
-            postgresql_ops={'name': 'gin_trgm_ops'}
-        ),
-        Index(
-            'uq_product_indexes_name_lower',
-            text('lower(name)'),
-            unique=True
-        ),
-        Index(
-            'idx_product_indexes_synonyms', 
-            'synonyms', 
-            postgresql_using='gin'
-        ),
+        Index( 'idx_product_indexes_name_trgm', 'name', postgresql_using='gin', postgresql_ops={'name': 'gin_trgm_ops'}),
+        Index('uq_product_indexes_name_lower',text('lower(name)'),unique=True),
+        Index('idx_product_indexes_synonyms', 'synonyms', postgresql_using='gin'),
         Index('idx_product_indexes_category_id', 'category_id'),
         {'comment': 'Normalized product dictionary with fuzzy search capabilities'}
     )
