@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import Field, field_validator
 from src.common.schemas import AppBaseModel, PaginatedResponse
 
 class ShopValidationMixin:

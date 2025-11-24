@@ -1,80 +1,65 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
 from datetime import datetime
+from typing import Optional
+from pydantic import Field, field_validator
+from src.common.schemas import AppBaseModel, PaginatedResponse
 
+class CategoryValidationMixin:
+    
+    @field_validator('name', check_fields=False)
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if not v:
+                raise ValueError("Category name cannot be empty")
+        return v
 
-class CategoryResponse(BaseModel):
-    """
-    Response model for a single category with hierarchical structure.
-    
-    Attributes:
-        id: Category ID
-        name: Category name
-        parent_id: Parent category ID (null for root categories)
-        children: List of subcategories (recursive structure)
-        products_count: Number of products in this category
-        created_at: Creation timestamp
-    """
-    model_config = ConfigDict(
-        strict=True,
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": 1,
-                "name": "Food & Beverages",
-                "parent_id": None,
-                "children": [],
-                "products_count": 150,
-                "created_at": "2024-01-01T00:00:00Z"
-            }
-        }
+    @field_validator('parent_id', check_fields=False)
+    @classmethod
+    def validate_parent_id(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("Parent ID must be a positive integer")
+        return v
+
+# --- BASE MODEL ---
+class CategoryBase(AppBaseModel, CategoryValidationMixin):
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Category name (required, 1-255 characters, unique)"
     )
     
-    id: int
-    name: str
-    parent_id: Optional[int]
-    children: List['CategoryResponse'] = Field(
-        default_factory=list,
-        description="List of subcategories"
+    parent_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Parent category ID (optional, must be positive, null for root categories)"
     )
-    products_count: int = Field(
-        ge=0,
-        description="Number of products in this category"
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class CategoryUpdate(AppBaseModel, CategoryValidationMixin):
+    
+    name: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=255,
+        description="Category name"
     )
+    
+    parent_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Parent category ID"
+    )
+
+# --- RESPONSES ---
+class CategoryResponse(CategoryBase):
+    id: int = Field(..., gt=0)
     created_at: datetime
+    updated_at: datetime
 
-
-# Forward reference resolution for recursive model
-CategoryResponse.model_rebuild()
-
-
-class CategoryListResponse(BaseModel):
-    """
-    Response model for list of categories.
-    
-    Attributes:
-        categories: List of category responses
-    """
-    model_config = ConfigDict(
-        strict=True,
-        json_schema_extra={
-            "example": {
-                "categories": [
-                    {
-                        "id": 1,
-                        "name": "Food & Beverages",
-                        "parent_id": None,
-                        "children": [],
-                        "products_count": 150,
-                        "created_at": "2024-01-01T00:00:00Z"
-                    }
-                ]
-            }
-        }
-    )
-    
-    categories: List[CategoryResponse] = Field(
-        default_factory=list,
-        description="List of categories"
-    )
-
+class CategoryListResponse(PaginatedResponse[CategoryResponse]):
+    pass

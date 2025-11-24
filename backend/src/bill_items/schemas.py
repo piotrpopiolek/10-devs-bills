@@ -1,57 +1,181 @@
-from __future__ import annotations
-
-import enum
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
+from pydantic import Field, field_validator
+from src.common.schemas import AppBaseModel, PaginatedResponse
+from src.bill_items.models import VerificationSource
 
-from sqlalchemy import (
-    Integer, Text, DateTime, Boolean, Numeric, 
-    ForeignKey, Index, CheckConstraint, Enum as SAEnum
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func, expression
-
-from src.db.main import Base
-
-if TYPE_CHECKING:
-    from src.bills.models import Bill
-    from src.product_indexes.models import ProductIndex
-
-class VerificationSource(str, enum.Enum):
-    AUTO = "auto"
-    USER = "user"
-    ADMIN = "admin"
-
-class BillItem(Base):
-    """
-    BillItem model representing a single line item on a receipt.
-    """
-    __tablename__ = 'bill_items'
+class BillItemValidationMixin:
     
-    __table_args__ = (
-        CheckConstraint('quantity > 0', name='check_quantity_positive'),
-        CheckConstraint('unit_price >= 0', name='check_unit_price_non_negative'),
-        Index('idx_bill_items_bill_id', 'bill_id'),
-        Index('idx_bill_items_index_id', 'index_id'),
-        Index(
-            'idx_bill_items_unverified', 
-            'is_verified', 
-            postgresql_where=(expression.column('is_verified') == False)
-        ),
-        {'comment': 'Individual bill items with verification and confidence tracking'}
+    @field_validator('quantity', check_fields=False)
+    @classmethod
+    def validate_quantity(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("Quantity must be positive")
+        return v
+
+    @field_validator('unit_price', check_fields=False)
+    @classmethod
+    def validate_unit_price(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v < 0:
+                raise ValueError("Unit price cannot be negative")
+        return v
+
+    @field_validator('total_price', check_fields=False)
+    @classmethod
+    def validate_total_price(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v < 0:
+                raise ValueError("Total price cannot be negative")
+        return v
+
+    @field_validator('confidence_score', check_fields=False)
+    @classmethod
+    def validate_confidence_score(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v < 0 or v > 1:
+                raise ValueError("Confidence score must be between 0.00 and 1.00")
+        return v
+
+    @field_validator('bill_id', check_fields=False)
+    @classmethod
+    def validate_bill_id(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("Bill ID must be a positive integer")
+        return v
+
+    @field_validator('index_id', check_fields=False)
+    @classmethod
+    def validate_index_id(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("Index ID must be a positive integer")
+        return v
+
+    @field_validator('original_text', check_fields=False)
+    @classmethod
+    def validate_original_text(cls, v: Optional[str]) -> Optional[str]:
+        return v or None
+
+# --- BASE MODEL ---
+class BillItemBase(AppBaseModel, BillItemValidationMixin):
+
+    quantity: Decimal = Field(
+        ...,
+        gt=0,
+        description="Quantity of the item (required, must be positive, max 10 digits with 4 decimal places)"
+    )
+    
+    unit_price: Decimal = Field(
+        ...,
+        ge=0,
+        description="Unit price of the item (required, must be non-negative, max 12 digits with 2 decimal places)"
+    )
+    
+    total_price: Decimal = Field(
+        ...,
+        ge=0,
+        description="Total price of the item (required, must be non-negative, max 12 digits with 2 decimal places)"
+    )
+    
+    is_verified: bool = Field(
+        False,
+        description="Manual verification status (default: false)"
+    )
+    
+    verification_source: VerificationSource = Field(
+        VerificationSource.AUTO,
+        description="Source of verification (default: auto)"
+    )
+    
+    bill_id: int = Field(
+        ...,
+        gt=0,
+        description="Bill ID (required, must be positive)"
+    )
+    
+    index_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Product index ID (optional, must be positive)"
+    )
+    
+    original_text: Optional[str] = Field(
+        None,
+        description="Original OCR text of the item (optional)"
+    )
+    
+    confidence_score: Optional[Decimal] = Field(
+        None,
+        ge=0,
+        le=1,
+        description="OCR confidence score (optional, range 0.00-1.00, max 3 digits with 2 decimal places)"
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    total_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), comment='Manual verification status for quality control')
-    verification_source: Mapped[VerificationSource] = mapped_column(SAEnum(VerificationSource, name='verification_source', create_type=True),nullable=False,server_default=VerificationSource.AUTO.value)
-    original_text: Mapped[Optional[str]] = mapped_column(Text)
-    confidence_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2), comment='OCR confidence score (0.00-1.00)')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    bill_id: Mapped[int] = mapped_column(Integer, ForeignKey('bills.id', ondelete='CASCADE'), nullable=False)
-    index_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('product_indexes.id', ondelete='SET NULL'), nullable=True)
-    bill: Mapped['Bill'] = relationship('Bill', back_populates='bill_items')
-    index: Mapped[Optional['ProductIndex']] = relationship('ProductIndex', back_populates='bill_items')
+class BillItemCreate(BillItemBase):
+    pass
+
+class BillItemUpdate(AppBaseModel, BillItemValidationMixin):
+    
+    quantity: Optional[Decimal] = Field(
+        None,
+        gt=0,
+        description="Quantity of the item"
+    )
+    
+    unit_price: Optional[Decimal] = Field(
+        None,
+        ge=0,
+        description="Unit price of the item"
+    )
+    
+    total_price: Optional[Decimal] = Field(
+        None,
+        ge=0,
+        description="Total price of the item"
+    )
+    
+    is_verified: Optional[bool] = Field(
+        None,
+        description="Manual verification status"
+    )
+    
+    verification_source: Optional[VerificationSource] = Field(
+        None,
+        description="Source of verification"
+    )
+    
+    bill_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Bill ID"
+    )
+    
+    index_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Product index ID"
+    )
+    
+    original_text: Optional[str] = Field(
+        None,
+        description="Original OCR text of the item"
+    )
+    
+    confidence_score: Optional[Decimal] = Field(
+        None,
+        ge=0,
+        le=1,
+        description="OCR confidence score"
+    )
+
+# --- RESPONSES ---
+class BillItemResponse(BillItemBase):
+    id: int = Field(..., gt=0)
+    created_at: datetime
+
+class BillItemListResponse(PaginatedResponse[BillItemResponse]):
+    pass

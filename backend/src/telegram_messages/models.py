@@ -61,7 +61,6 @@ class TelegramMessage(Base):
         Index('idx_telegram_messages_user_id', 'user_id'),
         # Złożony indeks przydatny do raportów/historii: "Pokaż wiadomości z tego czatu, posortowane datą"
         Index('idx_telegram_messages_chat_id_created_at', 'chat_id', 'created_at'),
-        
         {'comment': 'Telegram message tracking and content storage for bill processing'}
     )
 
