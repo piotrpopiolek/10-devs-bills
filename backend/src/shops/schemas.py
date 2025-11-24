@@ -1,15 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-
-class AppBaseModel(BaseModel):
-    model_config = ConfigDict(
-        strict=True,                # No implicit type coercion (ex: "1" != 1)
-        str_strip_whitespace=True,  # Auto-strip whitespace from strings (built-in Pydantic feature!)
-        validate_assignment=True,   # Validate values even when setting attributes after creation
-        from_attributes=True,       # Enable ORM mode (SQLAlchemy -> Pydantic)
-        frozen=False                # Allow mutation (default)
-    )
+from src.common.schemas import AppBaseModel, PaginatedResponse
 
 class ShopValidationMixin:
     
@@ -66,15 +58,5 @@ class ShopResponse(ShopBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(
-        strict=True,
-        from_attributes=True,
-        str_strip_whitespace=True
-    )
-
-class ShopListResponse(BaseModel):
-    model_config = ConfigDict(strict=True, from_attributes=True)
-    items: list[ShopResponse]
-    total: int = Field(..., ge=0)
-    page: int = Field(..., ge=1)
-    page_size: int = Field(..., ge=1, le=100)
+class ShopListResponse(PaginatedResponse[ShopResponse]):
+    pass
