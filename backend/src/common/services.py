@@ -1,5 +1,6 @@
 from typing import Type, Any, TypeVar
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql.elements import ColumnElement
@@ -54,3 +55,16 @@ class AppService:
         result = await self.session.execute(stmt)
         if not result.scalars().first():
             raise ResourceNotFoundError(resource_name, value)
+
+    def _is_foreign_key_violation(self, e: IntegrityError) -> bool:
+        """
+        Checks if the IntegrityError is caused by a foreign key violation.
+        Supports both asyncpg (sqlstate) and psycopg2 (pgcode).
+        """
+        # asyncpg puts sqlstate in e.orig.sqlstate
+        if hasattr(e.orig, 'sqlstate') and e.orig.sqlstate == '23503':
+            return True
+        # psycopg2 puts pgcode in e.orig.pgcode
+        if hasattr(e.orig, 'pgcode') and e.orig.pgcode == '23503':
+            return True
+        return False
