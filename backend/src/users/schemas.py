@@ -55,6 +55,6 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
 
-class ShopListResponse(PaginatedResponse[UserResponse]):
+class UserListResponse(PaginatedResponse[UserResponse]):
     pass
 

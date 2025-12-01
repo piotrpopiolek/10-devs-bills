@@ -1,64 +1,133 @@
-from __future__ import annotations
+from typing import Sequence, Optional
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-import enum
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from src.common.services import AppService
+from src.telegram_messages.models import TelegramMessage
+from src.telegram_messages.schemas import TelegramMessageCreate, TelegramMessageUpdate
+from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
+from src.users.models import User
+from src.bills.models import Bill
 
-from sqlalchemy import (
-    Integer, String, Text, DateTime, 
-    ForeignKey, Index, BigInteger, Enum as SAEnum
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
-from src.db.main import Base
+class TelegramMessageService(AppService):
 
-if TYPE_CHECKING:
-    from src.bills.models import Bill
-    from src.users.models import User
+    async def get_by_id(self, message_id: int) -> TelegramMessage:
+        stmt = select(TelegramMessage).where(TelegramMessage.id == message_id)
+        result = await self.session.execute(stmt)
+        message = result.scalar_one_or_none()
 
-class TelegramMessageType(str, enum.Enum):
-    TEXT = "text"
-    PHOTO = "photo"
-    DOCUMENT = "document"
-    AUDIO = "audio"
-    VIDEO = "video"
-    VOICE = "voice"
-    STICKER = "sticker"
+        if not message:
+            raise ResourceNotFoundError("TelegramMessage", message_id)
+        
+        return message
 
-class TelegramMessageStatus(str, enum.Enum):
-    SENT = "sent"
-    DELIVERED = "delivered"
-    READ = "read"
-    FAILED = "failed"
+    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[TelegramMessage]:
+        stmt = select(TelegramMessage).offset(skip).limit(limit).order_by(TelegramMessage.id)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
-class TelegramMessage(Base):
-    """
-    TelegramMessage model.
-    Stores metadata and content of messages processed by the bot.
-    """
-    __tablename__ = 'telegram_messages'
-    
-    __table_args__ = (
-        Index('idx_telegram_messages_bill_id', 'bill_id'),
-        Index('idx_telegram_messages_user_id', 'user_id'),
-        # Złożony indeks przydatny do raportów/historii: "Pokaż wiadomości z tego czatu, posortowane datą"
-        Index('idx_telegram_messages_chat_id_created_at', 'chat_id', 'created_at'),
-        {'comment': 'Telegram message tracking and content storage for bill processing'}
-    )
+    async def _ensure_unique_telegram_message_id(self, telegram_message_id: int, exclude_id: Optional[int] = None) -> None:
+        """
+        Checks if a telegram_message_id already exists.
+        Used to prevent duplicate telegram message IDs.
+        """
+        stmt = select(TelegramMessage).where(
+            TelegramMessage.telegram_message_id == telegram_message_id
+        )
+        
+        if exclude_id is not None:
+            stmt = stmt.where(TelegramMessage.id != exclude_id)
+        
+        result = await self.session.execute(stmt)
+        if result.scalars().first():
+            raise ResourceAlreadyExistsError("TelegramMessage", "telegram_message_id", telegram_message_id)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    telegram_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
-    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    message_type: Mapped[TelegramMessageType] = mapped_column(SAEnum(TelegramMessageType, name='telegram_message_type', create_type=True), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False, comment="Message text or caption")
-    status: Mapped[TelegramMessageStatus] = mapped_column(SAEnum(TelegramMessageStatus, name='telegram_message_status', create_type=True), nullable=False, server_default=TelegramMessageStatus.SENT.value)
-    file_id: Mapped[Optional[str]] = mapped_column(String(255))
-    file_path: Mapped[Optional[str]] = mapped_column(Text)
-    error_message: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    bill_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('bills.id', ondelete='SET NULL'), nullable=True)
-    bill: Mapped[Optional['Bill']] = relationship('Bill', back_populates='telegram_messages')
-    user: Mapped['User'] = relationship('User', back_populates='telegram_messages')
+    async def create(self, data: TelegramMessageCreate) -> TelegramMessage:
+        # User Existence Check (Referential Integrity check before DB hit)
+        await self._ensure_exists(model=User, field=User.id, value=data.user_id, resource_name="User")
+
+        # Bill Existence Check (if provided)
+        if data.bill_id:
+            await self._ensure_exists(model=Bill, field=Bill.id, value=data.bill_id, resource_name="Bill")
+
+        # Uniqueness Check (telegram_message_id)
+        await self._ensure_unique_telegram_message_id(data.telegram_message_id)
+
+        # Object Construction
+        new_message = TelegramMessage(
+            telegram_message_id=data.telegram_message_id,
+            chat_id=data.chat_id,
+            message_type=data.message_type,
+            content=data.content,
+            status=data.status,
+            file_id=data.file_id,
+            file_path=data.file_path,
+            error_message=data.error_message,
+            user_id=data.user_id,
+            bill_id=data.bill_id
+        )
+
+        # Persistence (Unit of Work)
+        self.session.add(new_message)
+        
+        try:
+            await self.session.commit()
+            await self.session.refresh(new_message)
+        except IntegrityError as e:
+            await self.session.rollback()
+            # Check if it's a unique constraint violation
+            if "telegram_message_id" in str(e.orig) or "23505" in str(e.orig):
+                raise ResourceAlreadyExistsError("TelegramMessage", "telegram_message_id", data.telegram_message_id) from e
+            raise e
+
+        return new_message
+
+    async def update(self, message_id: int, data: TelegramMessageUpdate) -> TelegramMessage:
+        message = await self.get_by_id(message_id)
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        if not update_data:
+            return message
+
+        # User Existence Check (if user_id is being updated)
+        if "user_id" in update_data and update_data["user_id"] != message.user_id:
+            await self._ensure_exists(model=User, field=User.id, value=update_data["user_id"], resource_name="User")
+
+        # Bill Existence Check (if bill_id is being updated)
+        if "bill_id" in update_data and update_data["bill_id"] != message.bill_id:
+            new_bill_id = update_data["bill_id"]
+            if new_bill_id is not None:
+                await self._ensure_exists(model=Bill, field=Bill.id, value=new_bill_id, resource_name="Bill")
+
+        # Uniqueness Check (if telegram_message_id is being updated)
+        if "telegram_message_id" in update_data and update_data["telegram_message_id"] != message.telegram_message_id:
+            await self._ensure_unique_telegram_message_id(update_data["telegram_message_id"], exclude_id=message.id)
+
+        # Apply updates
+        for key, value in update_data.items():
+            setattr(message, key, value)
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(message)
+        except IntegrityError as e:
+            await self.session.rollback()
+            # Check if it's a unique constraint violation
+            if "telegram_message_id" in str(e.orig) or "23505" in str(e.orig):
+                raise ResourceAlreadyExistsError("TelegramMessage", "telegram_message_id", update_data.get("telegram_message_id", message.telegram_message_id)) from e
+            raise e
+
+        return message
+
+    async def delete(self, message_id: int) -> None:
+        message = await self.get_by_id(message_id)
+        
+        self.session.delete(message)
+        
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
