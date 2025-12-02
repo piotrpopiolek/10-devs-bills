@@ -5,11 +5,10 @@ class AppError(Exception):
 class ResourceNotFoundError(AppError):
     """Generic error when a requested resource is not found."""
     def __init__(self, resource_name: str, identifier: any):
-        self.message = f"{resource_name} with identifier {identifier} not found."
+        self.message = f"{resource_name} z identyfikatorem {identifier} nie znaleziono."
         super().__init__(self.message)
 
 class ResourceAlreadyExistsError(AppError):
-    """Generic error when a resource already exists (unique constraint)."""
     def __init__(self, resource_name: str, field: str, value: any):
-        self.message = f"{resource_name} with {field} '{value}' already exists."
+        self.message = f"{resource_name} z {field} '{value}' już istnieje."
         super().__init__(self.message)

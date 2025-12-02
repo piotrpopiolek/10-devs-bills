@@ -1,7 +1,7 @@
 from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
 from src.bills.models import Bill
 from src.bills.schemas import BillCreate, BillUpdate
@@ -10,7 +10,9 @@ from src.users.models import User
 from src.shops.models import Shop
 
 
-class BillService(AppService):
+class BillService(AppService[Bill, BillCreate, BillUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=Bill, session=session)
 
     async def get_by_id(self, bill_id: int) -> Bill:
         stmt = select(Bill).where(Bill.id == bill_id)

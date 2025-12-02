@@ -1,6 +1,7 @@
 from typing import Sequence, Optional
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.product_indexes.models import ProductIndex
@@ -9,7 +10,9 @@ from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsEr
 from src.categories.models import Category
 
 
-class ProductIndexService(AppService):
+class ProductIndexService(AppService[ProductIndex, ProductIndexCreate, ProductIndexUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=ProductIndex, session=session)
 
     async def get_by_id(self, product_index_id: int) -> ProductIndex:
         stmt = select(ProductIndex).where(ProductIndex.id == product_index_id)

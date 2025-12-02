@@ -34,15 +34,15 @@ class PaginatedResponse(AppBaseModel, Generic[T]):
         description="Total number of items matching the query"
     )
     
-    page: int = Field(
+    skip: int = Field(
         ...,
-        ge=1,
-        description="Current page number"
+        ge=0,
+        description="Number of items to skip"
     )
     
-    page_size: int = Field(
+    limit: int = Field(
         ...,
-        ge=1,
+        ge=5,
         le=100,
-        description="Number of items per page"
+        description="Max number of items to return"
     )

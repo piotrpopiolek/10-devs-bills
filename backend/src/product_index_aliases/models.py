@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
     Integer, String, Text, DateTime, 
-    ForeignKey, Index, UniqueConstraint
+    ForeignKey, Index
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
@@ -54,7 +54,7 @@ class ProductIndexAlias(Base):
         Index('idx_product_index_aliases_index_id', 'index_id'),
         Index('idx_product_index_aliases_shop_id', 'shop_id'),
         Index('idx_product_index_aliases_user_id', 'user_id'),
-        UniqueConstraint(text('lower(raw_name)'), 'index_id', name='uq_alias_raw_name_index'),
+        Index('uq_alias_raw_name_index', text('lower(raw_name)'), 'index_id', unique=True),
         {'comment': 'OCR text variants linked to normalized products with confirmation tracking'}
     )
 

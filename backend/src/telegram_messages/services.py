@@ -1,6 +1,7 @@
 from typing import Sequence, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.telegram_messages.models import TelegramMessage
@@ -10,7 +11,9 @@ from src.users.models import User
 from src.bills.models import Bill
 
 
-class TelegramMessageService(AppService):
+class TelegramMessageService(AppService[TelegramMessage, TelegramMessageCreate, TelegramMessageUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=TelegramMessage, session=session)
 
     async def get_by_id(self, message_id: int) -> TelegramMessage:
         stmt = select(TelegramMessage).where(TelegramMessage.id == message_id)

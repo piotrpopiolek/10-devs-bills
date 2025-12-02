@@ -1,6 +1,7 @@
 from typing import Sequence, Optional
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.product_index_aliases.models import ProductIndexAlias
@@ -11,7 +12,9 @@ from src.shops.models import Shop
 from src.users.models import User
 
 
-class ProductIndexAliasService(AppService):
+class ProductIndexAliasService(AppService[ProductIndexAlias, ProductIndexAliasCreate, ProductIndexAliasUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=ProductIndexAlias, session=session)
 
     async def get_by_id(self, alias_id: int) -> ProductIndexAlias:
         stmt = select(ProductIndexAlias).where(ProductIndexAlias.id == alias_id)

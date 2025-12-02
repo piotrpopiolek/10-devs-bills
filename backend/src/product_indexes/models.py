@@ -53,4 +53,4 @@ class ProductIndex(Base):
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=True)
     category: Mapped[Optional['Category']] = relationship('Category', back_populates='product_indexes')
     bill_items: Mapped[List['BillItem']] = relationship('BillItem', back_populates='index')
-    aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='index')
+    product_index_aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='index')

@@ -1,6 +1,7 @@
 from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.categories.models import Category
@@ -11,7 +12,9 @@ from src.categories.exceptions import (
     CategoryHasChildrenError
 )
 
-class CategoryService(AppService):
+class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=Category, session=session)
 
     async def get_by_id(self, category_id: int) -> Category:
         stmt = select(Category).where(Category.id == category_id)

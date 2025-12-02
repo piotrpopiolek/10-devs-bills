@@ -1,6 +1,7 @@
 from typing import Sequence, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.users.models import User
@@ -8,7 +9,9 @@ from src.users.schemas import UserCreate, UserUpdate
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
 
 
-class UserService(AppService):
+class UserService(AppService[User, UserCreate, UserUpdate]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(model=User, session=session)
 
     async def get_by_id(self, user_id: int) -> User:
         stmt = select(User).where(User.id == user_id)

@@ -18,7 +18,7 @@ async def get_shop_service(session: Annotated[AsyncSession, Depends(get_session)
 
 ServiceDependency = Annotated[ShopService, Depends(get_shop_service)]
 
-@router.get("/", response_model=list[ShopListResponse], status_code=status.HTTP_200_OK, summary="List all shops")
+@router.get("/", response_model=ShopListResponse, status_code=status.HTTP_200_OK, summary="List all shops")
 async def get_shops(service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
     return await service.get_all(skip=skip, limit=limit)
 
