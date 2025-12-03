@@ -30,8 +30,12 @@ export interface PaginationMeta {
   pages: number
 }
 
+// Standard backend response format
 export interface PaginatedResponse<T> {
-  pagination: PaginationMeta
+  items: T[]
+  total: number
+  skip: number
+  limit: number
 }
 
 // ============================================================================
@@ -81,9 +85,7 @@ export interface ShopDetailResponse extends ShopResponse {
   total_spent: number
 }
 
-export interface ShopListResponse extends PaginatedResponse<ShopResponse[]> {
-  shops: ShopResponse[]
-}
+export type ShopListResponse = PaginatedResponse<ShopResponse>
 
 // ============================================================================
 // CATEGORY DTOs
@@ -94,10 +96,7 @@ export interface CategoryResponse extends Pick<Category, 'id' | 'name' | 'parent
   products_count: number
 }
 
-export interface CategoryListResponse {
-  categories: CategoryResponse[]
-  pagination?: PaginationMeta
-}
+export type CategoryListResponse = PaginatedResponse<CategoryResponse>
 
 // ============================================================================
 // PRODUCT DTOs
@@ -108,9 +107,7 @@ export interface ProductResponse extends Pick<Product, 'id' | 'name' | 'synonyms
   usage_count: number
 }
 
-export interface ProductListResponse extends PaginatedResponse<ProductResponse[]> {
-  products: ProductResponse[]
-}
+export type ProductListResponse = PaginatedResponse<ProductResponse>
 
 // ============================================================================
 // BILL ITEM DTOs
@@ -142,9 +139,7 @@ export interface PendingVerificationItem extends Pick<BillItem, 'id' | 'quantity
   suggested_product: ProductResponse | null
 }
 
-export interface PendingVerificationResponse extends PaginatedResponse<PendingVerificationItem[]> {
-  items: PendingVerificationItem[]
-}
+export type PendingVerificationResponse = PaginatedResponse<PendingVerificationItem>
 
 // ============================================================================
 // BILL DTOs
@@ -167,9 +162,7 @@ export interface BillDetailResponse extends Pick<Bill, 'id' | 'bill_date' | 'tot
   items: BillItemResponse[]
 }
 
-export interface BillListResponse extends PaginatedResponse<BillResponse[]> {
-  bills: BillResponse[]
-}
+export type BillListResponse = PaginatedResponse<BillResponse>
 
 // ============================================================================
 // REPORT DTOs

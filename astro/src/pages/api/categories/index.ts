@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
+import type { CategoryListResponse, ApiResponse } from '@/types';
 
 // Mark this route as dynamic (not prerendered)
 export const prerender = false;
@@ -63,57 +64,15 @@ export const GET: APIRoute = async ({ request }) => {
         }), { status: response.status });
     }
 
-    const rawData: unknown = await response.json();
-    console.log('Upstream API response:', JSON.stringify(rawData, null, 2));
+    const data = await response.json() as CategoryListResponse;
     
-    // Normalize response to match CategoryListResponse interface
-    // Backend returns PaginatedResponse[CategoryResponse] with: items, total, skip, limit
-    // We need: categories, pagination: { page, limit, total, pages }
-    
-    let normalizedData = rawData;
-
-    if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
-        const dataObj = rawData as Record<string, unknown>;
-        
-        // Backend returns items array, normalize to categories
-        const categories = Array.isArray(dataObj.items) ? dataObj.items : (Array.isArray(dataObj.categories) ? dataObj.categories : []);
-        
-        // Extract pagination info from backend response
-        const backendTotal = typeof dataObj.total === 'number' ? dataObj.total : categories.length;
-        const backendSkip = typeof dataObj.skip === 'number' ? dataObj.skip : skip;
-        const backendLimit = typeof dataObj.limit === 'number' ? dataObj.limit : limit;
-        
-        // Calculate page and pages for UI
-        const calculatedPage = Math.floor(backendSkip / backendLimit) + 1;
-        const calculatedPages = Math.ceil(backendTotal / backendLimit);
-        
-        normalizedData = {
-            categories,
-            pagination: {
-                page: calculatedPage,
-                limit: backendLimit,
-                total: backendTotal,
-                pages: calculatedPages
-            }
-        };
-    } else if (Array.isArray(rawData)) {
-        // If backend returns just an array
-        const calculatedPage = Math.floor(skip / limit) + 1;
-        normalizedData = {
-            categories: rawData,
-            pagination: {
-                page: calculatedPage,
-                limit,
-                total: rawData.length,
-                pages: 1
-            }
-        };
-    }
-
-    return new Response(JSON.stringify({
+    // Return wrapped response
+    const apiResponse: ApiResponse<CategoryListResponse> = {
       success: true,
-      data: normalizedData
-    }), {
+      data: data
+    };
+
+    return new Response(JSON.stringify(apiResponse), {
       status: 200,
       headers: {
         'Content-Type': 'application/json'

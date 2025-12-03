@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import { AppSidebar, MobileSidebar } from '../components/AppSidebar';
+import { ClientRouter } from 'astro:transitions';
 ---
 
 <!doctype html>
@@ -11,6 +12,7 @@ import { AppSidebar, MobileSidebar } from '../components/AppSidebar';
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
 		<title>Bills - Zarządzanie wydatkami</title>
+		<ClientRouter />
 	</head>
 	<body>
 		<div class="flex h-screen overflow-hidden">

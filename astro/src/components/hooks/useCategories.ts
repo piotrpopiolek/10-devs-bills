@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { CategoryResponse, PaginationMeta } from '@/types';
+import type { CategoryResponse } from '@/types';
 import { getCategories } from '@/lib/services/categories';
 
 interface UseCategoriesReturn {
   data: CategoryResponse[];
-  meta: PaginationMeta | null;
+  total: number;
   isLoading: boolean;
   error: Error | null;
   setSkip: (skip: number) => void;
   skip: number;
+  limit: number;
   refetch: () => Promise<void>;
 }
 
 export const useCategories = (initialSkip: number = 0, initialLimit: number = 100): UseCategoriesReturn => {
   const [data, setData] = useState<CategoryResponse[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [total, setTotal] = useState<number>(0);
+  const [limit, setLimit] = useState<number>(initialLimit);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
   
@@ -30,14 +32,16 @@ export const useCategories = (initialSkip: number = 0, initialLimit: number = 10
         limit: initialLimit,
       });
       
-      // Safe access to data
-      const categoriesData = response.categories || []; 
-      setData(categoriesData);
-      setMeta(response.pagination || null);
+      // Update state with new backend structure
+      setData(response.items || []);
+      setTotal(response.total || 0);
+      setLimit(response.limit || initialLimit);
+      
     } catch (err) {
       console.error("useCategories error:", err);
       setError(err instanceof Error ? err : new Error('An unknown error occurred'));
       setData([]); 
+      setTotal(0);
     } finally {
       setIsLoading(false);
     }
@@ -49,12 +53,12 @@ export const useCategories = (initialSkip: number = 0, initialLimit: number = 10
 
   return {
     data,
-    meta,
+    total,
     isLoading,
     error,
     setSkip,
     skip,
+    limit,
     refetch: fetchData
   };
 };
-

@@ -7,7 +7,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 export const CategoriesView: React.FC = () => {
   const {
     data,
-    meta,
+    total,
+    limit,
     isLoading,
     skip,
     setSkip,
@@ -16,8 +17,7 @@ export const CategoriesView: React.FC = () => {
   } = useCategories();
 
   // Calculate current page from skip and limit for UI display
-  const currentPage = meta ? Math.floor(skip / meta.limit) + 1 : 1;
-  const limit = meta?.limit || 100;
+  const currentPage = Math.floor(skip / limit) + 1;
 
   const handlePageChange = (newPage: number) => {
     const newSkip = (newPage - 1) * limit;
@@ -26,8 +26,8 @@ export const CategoriesView: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const totalPages = meta ? Math.ceil(meta.total / meta.limit) : 0;
-  const showPagination = meta && totalPages > 1;
+  const totalPages = Math.ceil(total / limit);
+  const showPagination = totalPages > 1;
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6 space-y-6">
