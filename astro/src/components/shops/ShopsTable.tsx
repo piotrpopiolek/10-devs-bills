@@ -41,7 +41,7 @@ export const ShopsTable: React.FC<ShopsTableProps> = ({ data, isLoading }) => {
     );
   }
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center text-muted-foreground">
         Nie znaleziono sklepów spełniających kryteria.

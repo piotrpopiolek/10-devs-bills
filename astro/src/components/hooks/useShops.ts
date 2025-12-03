@@ -47,11 +47,14 @@ export const useShops = (initialPage: number = 1, initialLimit: number = 10): Us
         search: debouncedSearch
       });
       
-      setData(response.shops);
-      setMeta(response.pagination);
+      // Safe access to data
+      const shopsData = response.shops || []; 
+      setData(shopsData);
+      setMeta(response.pagination || null);
     } catch (err) {
+      console.error("useShops error:", err);
       setError(err instanceof Error ? err : new Error('An unknown error occurred'));
-      setData([]); // Clear data on error or keep previous? Clearing is safer for now.
+      setData([]); 
     } finally {
       setIsLoading(false);
     }
