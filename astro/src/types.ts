@@ -96,6 +96,7 @@ export interface CategoryResponse extends Pick<Category, 'id' | 'name' | 'parent
 
 export interface CategoryListResponse {
   categories: CategoryResponse[]
+  pagination?: PaginationMeta
 }
 
 // ============================================================================
@@ -335,7 +336,7 @@ export interface ApiError {
 // ============================================================================
 
 export interface BillsQueryParams {
-  page?: number
+  skip?: number
   limit?: number
   status?: ProcessingStatus
   shop_id?: number
@@ -345,11 +346,14 @@ export interface BillsQueryParams {
 
 export interface ShopsQueryParams {
   search?: string
-  page?: number
+  skip?: number
   limit?: number
 }
 
 export interface CategoriesQueryParams {
+  skip?: number
+  limit?: number
+  // Future: parent_id and include_children may be added to backend
   parent_id?: number
   include_children?: boolean
 }
@@ -357,12 +361,12 @@ export interface CategoriesQueryParams {
 export interface ProductsQueryParams {
   search?: string
   category_id?: number
-  page?: number
+  skip?: number
   limit?: number
 }
 
 export interface PendingVerificationQueryParams {
-  page?: number
+  skip?: number
   limit?: number
 }
 

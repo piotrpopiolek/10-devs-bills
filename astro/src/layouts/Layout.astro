@@ -1,18 +1,36 @@
 ---
 import '../styles/global.css';
+import { AppSidebar, MobileSidebar } from '../components/AppSidebar';
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="pl">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
+		<title>Bills - Zarządzanie wydatkami</title>
 	</head>
 	<body>
-		<slot />
+		<div class="flex h-screen overflow-hidden">
+			<!-- Desktop Sidebar -->
+			<AppSidebar client:load class="hidden lg:flex w-[250px] flex-shrink-0" />
+			
+			<!-- Main Content Area -->
+			<div class="flex flex-1 flex-col overflow-hidden">
+				<!-- Mobile TopBar -->
+				<header class="lg:hidden flex h-16 items-center border-b bg-background px-4">
+					<MobileSidebar client:load />
+					<h1 class="ml-4 text-xl font-bold">Bills</h1>
+				</header>
+				
+				<!-- Page Content -->
+				<main class="flex-1 overflow-y-auto">
+					<slot />
+				</main>
+			</div>
+		</div>
 	</body>
 </html>
 

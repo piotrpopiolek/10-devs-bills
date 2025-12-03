@@ -1,64 +1,47 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ShopResponse, PaginationMeta } from '@/types';
-import { getShops } from '@/lib/services/shops';
+import type { CategoryResponse, PaginationMeta } from '@/types';
+import { getCategories } from '@/lib/services/categories';
 
-interface UseShopsReturn {
-  data: ShopResponse[];
+interface UseCategoriesReturn {
+  data: CategoryResponse[];
   meta: PaginationMeta | null;
   isLoading: boolean;
   error: Error | null;
   setSkip: (skip: number) => void;
-  setSearch: (search: string) => void;
   skip: number;
-  search: string;
   refetch: () => Promise<void>;
 }
 
-export const useShops = (initialSkip: number = 0, initialLimit: number = 10): UseShopsReturn => {
-  const [data, setData] = useState<ShopResponse[]>([]);
+export const useCategories = (initialSkip: number = 0, initialLimit: number = 100): UseCategoriesReturn => {
+  const [data, setData] = useState<CategoryResponse[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
   
   const [skip, setSkip] = useState<number>(initialSkip);
-  const [search, setSearch] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-      if (search !== debouncedSearch) {
-        setSkip(0); // Reset to skip 0 on new search
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [search, debouncedSearch]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await getShops({
+      const response = await getCategories({
         skip,
         limit: initialLimit,
-        search: debouncedSearch
       });
       
       // Safe access to data
-      const shopsData = response.shops || []; 
-      setData(shopsData);
+      const categoriesData = response.categories || []; 
+      setData(categoriesData);
       setMeta(response.pagination || null);
     } catch (err) {
-      console.error("useShops error:", err);
+      console.error("useCategories error:", err);
       setError(err instanceof Error ? err : new Error('An unknown error occurred'));
       setData([]); 
     } finally {
       setIsLoading(false);
     }
-  }, [skip, initialLimit, debouncedSearch]);
+  }, [skip, initialLimit]);
 
   useEffect(() => {
     fetchData();
@@ -70,9 +53,7 @@ export const useShops = (initialSkip: number = 0, initialLimit: number = 10): Us
     isLoading,
     error,
     setSkip,
-    setSearch,
     skip,
-    search,
     refetch: fetchData
   };
 };

@@ -1,70 +1,130 @@
-// GET /categories endpoint - draft implementation for listing product categories
-import type { NextApiRequest, NextApiResponse } from 'next'
-import type { ApiError } from '../../../types'
-import axios from 'axios'
+import type { APIRoute } from 'astro';
+import { z } from 'zod';
 
-// Ustaw backend URL FastAPI (pobierz z ENV lub wpisz na sztywno do testów)
-const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000/categories'
+// Mark this route as dynamic (not prerendered)
+export const prerender = false;
 
-interface GetCategoriesQuery {
-  parent_id?: string
-  include_children?: string
-}
+// Zod schema for query parameters validation
+const CategoriesQuerySchema = z.object({
+  skip: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+});
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json({
-      error: 'method_not_allowed',
-      message: 'Method Not Allowed',
-      status_code: 405,
-    })
-  }
-
-  // 1. Wyciągnij i waliduj parametry
-  const { parent_id, include_children } = req.query as GetCategoriesQuery
-  let params: Record<string, any> = {}
-   
-  if (parent_id !== undefined) {
-    if (!/^\d+$/.test(parent_id)) {
-      return res.status(400).json({
-        error: 'invalid_parent_id',
-        message: 'parent_id must be a positive integer',
-        status_code: 400,
-      } as ApiError)
-    }
-    params.parent_id = parseInt(parent_id, 10)
-  }
-  if (include_children !== undefined) {
-    if (
-      include_children !== 'true' &&
-      include_children !== 'false' &&
-      include_children !== '1' &&
-      include_children !== '0'
-    ) {
-      return res.status(400).json({
-        error: 'invalid_include_children',
-        message: 'include_children must be a boolean',
-        status_code: 400,
-      } as ApiError)
-    }
-    params.include_children = ['1', 'true'].includes(include_children)
-  }
+export const GET: APIRoute = async ({ request }) => {
+  const url = new URL(request.url);
   
-  // 2. Forwarduj żądanie do FastAPI
-  try {
-    const fastapiRes = await axios.get(FASTAPI_URL, { params })
-    res.status(fastapiRes.status).json(fastapiRes.data)
-  } catch (err: any) {
-    // Forward any FastAPI HTTP errors or generic error if unreachable
-    if (err.response) {
-      res.status(err.response.status).json(err.response.data)
-    } else {
-      res.status(500).json({
-        error: 'fastapi_unreachable',
-        message: 'Could not connect to backend API',
-        status_code: 500,
-      })
-    }
+  // Parse and validate query parameters using Zod
+  const parseResult = CategoriesQuerySchema.safeParse({
+    skip: url.searchParams.get('skip') || '0',
+    limit: url.searchParams.get('limit') || '100',
+  });
+
+  // Early return for validation errors
+  if (!parseResult.success) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Invalid query parameters',
+        errors: parseResult.error.errors,
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
-}
+
+  const { skip, limit } = parseResult.data;
+  
+  const queryParams = new URLSearchParams();
+  queryParams.append('skip', skip.toString());
+  queryParams.append('limit', limit.toString());
+
+  // Use environment variable for backend URL
+  const BACKEND_URL = import.meta.env.BACKEND_URL;
+  const API_URL = `${BACKEND_URL}/categories`;
+
+  console.log(`Proxying request to: ${API_URL}/?${queryParams.toString()}`);
+
+  try {
+    const response = await fetch(`${API_URL}/?${queryParams.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Upstream API error: ${response.status} ${errorText}`);
+        return new Response(JSON.stringify({
+            success: false,
+            message: `Upstream API error: ${response.status}`
+        }), { status: response.status });
+    }
+
+    const rawData: unknown = await response.json();
+    console.log('Upstream API response:', JSON.stringify(rawData, null, 2));
+    
+    // Normalize response to match CategoryListResponse interface
+    // Backend returns PaginatedResponse[CategoryResponse] with: items, total, skip, limit
+    // We need: categories, pagination: { page, limit, total, pages }
+    
+    let normalizedData = rawData;
+
+    if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+        const dataObj = rawData as Record<string, unknown>;
+        
+        // Backend returns items array, normalize to categories
+        const categories = Array.isArray(dataObj.items) ? dataObj.items : (Array.isArray(dataObj.categories) ? dataObj.categories : []);
+        
+        // Extract pagination info from backend response
+        const backendTotal = typeof dataObj.total === 'number' ? dataObj.total : categories.length;
+        const backendSkip = typeof dataObj.skip === 'number' ? dataObj.skip : skip;
+        const backendLimit = typeof dataObj.limit === 'number' ? dataObj.limit : limit;
+        
+        // Calculate page and pages for UI
+        const calculatedPage = Math.floor(backendSkip / backendLimit) + 1;
+        const calculatedPages = Math.ceil(backendTotal / backendLimit);
+        
+        normalizedData = {
+            categories,
+            pagination: {
+                page: calculatedPage,
+                limit: backendLimit,
+                total: backendTotal,
+                pages: calculatedPages
+            }
+        };
+    } else if (Array.isArray(rawData)) {
+        // If backend returns just an array
+        const calculatedPage = Math.floor(skip / limit) + 1;
+        normalizedData = {
+            categories: rawData,
+            pagination: {
+                page: calculatedPage,
+                limit,
+                total: rawData.length,
+                pages: 1
+            }
+        };
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: normalizedData
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown proxy error'
+    }), { status: 500 });
+  }
+};

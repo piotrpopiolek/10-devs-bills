@@ -1,4 +1,3 @@
-from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,11 +24,6 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
             raise ResourceNotFoundError("Category", category_id)
         
         return category
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[Category]:
-        stmt = select(Category).offset(skip).limit(limit).order_by(Category.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def create(self, data: CategoryCreate) -> Category:
         await self._ensure_unique(model=Category, field=Category.name, value=data.name, resource_name="Category", field_name="name")

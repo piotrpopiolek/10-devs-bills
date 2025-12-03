@@ -11,9 +11,8 @@ export const getShops = async (params: ShopsQueryParams): Promise<ShopListRespon
   const limit = params.limit || 10;
   queryParams.append('limit', limit.toString());
   
-  // Calculate skip based on page (default to 1)
-  const page = params.page || 1;
-  const skip = (page - 1) * limit;
+  // Use skip directly (default to 0)
+  const skip = params.skip ?? 0;
   queryParams.append('skip', skip.toString());
 
   try {

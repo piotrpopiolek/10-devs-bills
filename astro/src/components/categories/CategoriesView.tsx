@@ -1,30 +1,23 @@
 import React from 'react';
-import { useShops } from '@/components/hooks/useShops';
-import { ShopsToolbar } from './ShopsToolbar';
-import { ShopsTable } from './ShopsTable';
+import { useCategories } from '@/components/hooks/useCategories';
+import { CategoriesTable } from './CategoriesTable';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const ShopsView: React.FC = () => {
+export const CategoriesView: React.FC = () => {
   const {
     data,
     meta,
     isLoading,
-    search,
-    setSearch,
     skip,
     setSkip,
     error,
     refetch
-  } = useShops();
-
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
-  };
+  } = useCategories();
 
   // Calculate current page from skip and limit for UI display
   const currentPage = meta ? Math.floor(skip / meta.limit) + 1 : 1;
-  const limit = meta?.limit || 10;
+  const limit = meta?.limit || 100;
 
   const handlePageChange = (newPage: number) => {
     const newSkip = (newPage - 1) * limit;
@@ -39,16 +32,11 @@ export const ShopsView: React.FC = () => {
   return (
     <div className="container mx-auto py-10 px-4 md:px-6 space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Sklepy</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Kategorie</h1>
         <p className="text-muted-foreground">
-          Zarządzaj listą sklepów i przeglądaj statystyki paragonów.
+          Zarządzaj kategoriami produktów i przeglądaj hierarchię.
         </p>
       </div>
-
-      <ShopsToolbar 
-        searchTerm={search} 
-        onSearchChange={handleSearchChange} 
-      />
 
       {error ? (
         <div className="rounded-md border border-destructive/50 p-4 text-destructive">
@@ -60,7 +48,7 @@ export const ShopsView: React.FC = () => {
           </div>
         </div>
       ) : (
-        <ShopsTable 
+        <CategoriesTable 
           data={data} 
           isLoading={isLoading} 
         />

@@ -1,20 +1,53 @@
 import type { APIRoute } from 'astro';
+import { z } from 'zod';
+
+// Mark this route as dynamic (not prerendered)
+export const prerender = false;
+
+// Zod schema for query parameters validation
+const ShopsQuerySchema = z.object({
+  search: z.string().optional().default(''),
+  skip: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
 
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
-  const search = url.searchParams.get('search') || '';
-  const page = parseInt(url.searchParams.get('page') || '1');
-  const limit = parseInt(url.searchParams.get('limit') || '10');
+  
+  // Parse and validate query parameters using Zod
+  const parseResult = ShopsQuerySchema.safeParse({
+    search: url.searchParams.get('search') || '',
+    skip: url.searchParams.get('skip') || '0',
+    limit: url.searchParams.get('limit') || '10',
+  });
+
+  // Early return for validation errors
+  if (!parseResult.success) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Invalid query parameters',
+        errors: parseResult.error.errors,
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  const { search, skip, limit } = parseResult.data;
   
   const queryParams = new URLSearchParams();
-  queryParams.append('page', page.toString());
+  queryParams.append('skip', skip.toString());
   queryParams.append('limit', limit.toString());
   if (search) {
     queryParams.append('search', search);
   }
 
-  // TODO: Move this to env var
-  const API_URL = 'http://127.0.0.1:8000/api/v1/shops';
+  // Use environment variable for backend URL
+  const BACKEND_URL = import.meta.env.BACKEND_URL;
+  const API_URL = `${BACKEND_URL}/shops`;
 
   console.log(`Proxying request to: ${API_URL}/?${queryParams.toString()}`);
 
@@ -35,7 +68,7 @@ export const GET: APIRoute = async ({ request }) => {
         }), { status: response.status });
     }
 
-    const rawData = await response.json();
+    const rawData: unknown = await response.json();
     console.log('Upstream API response:', JSON.stringify(rawData, null, 2));
     
     // Normalize response to match ShopListResponse interface
@@ -44,24 +77,26 @@ export const GET: APIRoute = async ({ request }) => {
     
     let normalizedData = rawData;
 
-    if (rawData && typeof rawData === 'object') {
-        if (Array.isArray(rawData.items) && !rawData.shops) {
+    if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+        const dataObj = rawData as Record<string, unknown>;
+        if (Array.isArray(dataObj.items) && !dataObj.shops) {
             normalizedData = {
-                ...rawData,
-                shops: rawData.items
+                ...dataObj,
+                shops: dataObj.items
             };
-        } else if (Array.isArray(rawData) && !rawData.shops) {
-             // If backend returns just an array
-             normalizedData = {
-                 shops: rawData,
-                 pagination: {
-                     page,
-                     limit,
-                     total: rawData.length,
-                     pages: 1
-                 }
-             };
         }
+    } else if (Array.isArray(rawData)) {
+        // If backend returns just an array
+        const calculatedPage = Math.floor(skip / limit) + 1;
+        normalizedData = {
+            shops: rawData,
+            pagination: {
+                page: calculatedPage,
+                limit,
+                total: rawData.length,
+                pages: 1
+            }
+        };
     }
 
     return new Response(JSON.stringify({
