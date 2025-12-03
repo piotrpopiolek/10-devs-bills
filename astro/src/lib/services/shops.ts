@@ -1,0 +1,42 @@
+import type { ShopsQueryParams, ShopListResponse, ApiResponse } from '../../types';
+
+export const getShops = async (params: ShopsQueryParams): Promise<ShopListResponse> => {
+  const queryParams = new URLSearchParams();
+  
+  if (params.search) {
+    queryParams.append('search', params.search);
+  }
+  
+  // Default limit to 10 if not specified
+  const limit = params.limit || 10;
+  queryParams.append('limit', limit.toString());
+  
+  // Calculate skip based on page (default to 1)
+  const page = params.page || 1;
+  const skip = (page - 1) * limit;
+  queryParams.append('skip', skip.toString());
+
+  try {
+    const response = await fetch(`/api/shops?${queryParams.toString()}`);
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data: ApiResponse<ShopListResponse> | ShopListResponse = await response.json();
+    
+    // Handle both wrapped ApiResponse and direct response for flexibility
+    if ('data' in data && 'success' in data) {
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch shops');
+        }
+        return data.data;
+    }
+    
+    return data as ShopListResponse;
+  } catch (error) {
+    console.error('Error fetching shops:', error);
+    throw error;
+  }
+};
+
