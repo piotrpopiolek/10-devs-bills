@@ -1,0 +1,47 @@
+---
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+}
+
+const { title = "Bills - Zarządzanie wydatkami" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="pl">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{title}</title>
+	</head>
+    <body class="bg-background min-h-screen flex flex-col">
+        <header class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+            <div class="container mx-auto flex h-14 items-center">
+                <div class="mr-4 hidden md:flex">
+                    <a href="/" class="mr-6 flex items-center space-x-2">
+                        <span class="hidden font-bold sm:inline-block">Bills</span>
+                    </a>
+                </div>
+                <div class="flex flex-1 items-center justify-between space-x-2 md:justify-end">
+                    <nav class="flex items-center">
+                        <!-- Add login link if needed, or keeping it simple as per plan -->
+                    </nav>
+                </div>
+            </div>
+        </header>
+		<main class="flex-1">
+			<slot />
+		</main>
+        <footer class="border-t py-6 md:px-8 md:py-0">
+            <div class="container mx-auto flex flex-col items-center justify-between gap-4 md:h-24 md:flex-row">
+                <p class="text-balance text-center text-sm leading-loose text-muted-foreground md:text-left">
+                    Built by 10Devs.
+                </p>
+            </div>
+        </footer>
+	</body>
+</html>
+

@@ -1,0 +1,18 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+import HeroSection from '../components/landing/HeroSection.astro';
+import InstructionSteps from '../components/landing/InstructionSteps.astro';
+
+// TODO: Implement server-side redirect for logged-in users.
+// Example:
+// const { cookies, redirect } = Astro;
+// const accessToken = cookies.get('sb-access-token');
+// if (accessToken) {
+//   return redirect('/dashboard');
+// }
+---
+
+<LandingLayout>
+	<HeroSection />
+	<InstructionSteps />
+</LandingLayout>
