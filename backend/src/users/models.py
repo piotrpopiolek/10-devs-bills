@@ -12,7 +12,8 @@ from src.db.main import Base
 if TYPE_CHECKING:
     from src.bills.models import Bill
     from src.product_index_aliases.models import ProductIndexAlias
-    from src.telegram.models import TelegramMessage 
+    from src.telegram.models import TelegramMessage
+    from src.auth.models import MagicLink 
 
 class User(Base):
     """
@@ -26,7 +27,8 @@ class User(Base):
         is_active: User activity status (not nullable, default true)
         bills: List of bills (back-populates 'user')
         product_index_aliases: List of product index aliases (back-populates 'user')
-        telegram_messages: List of telegram messages (back-populates 'user')    
+        telegram_messages: List of telegram messages (back-populates 'user')
+        magic_links: List of magic links (back-populates 'user')    
     """
     __tablename__ = 'users'
     
@@ -42,3 +44,4 @@ class User(Base):
     bills: Mapped[List['Bill']] = relationship('Bill', back_populates='user')
     product_index_aliases: Mapped[List['ProductIndexAlias']] = relationship('ProductIndexAlias', back_populates='user')
     telegram_messages: Mapped[List['TelegramMessage']] = relationship('TelegramMessage', back_populates='user')
+    magic_links: Mapped[List['MagicLink']] = relationship('MagicLink', back_populates='user')

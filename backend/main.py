@@ -1,6 +1,8 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
 from src.health import router as health_router
+from src.auth.routes import router as auth_router
 from src.categories.routes import router as categories_router
 from src.bills.routes import router as bills_router
 from src.bill_items.routes import router as bill_items_router
@@ -17,10 +19,24 @@ app = FastAPI(
     docs_url="/docs" if settings.ENV == "development" else None,
 )
 
+# CORS Configuration
+if settings.ENV == "development":
+    origins = ["http://localhost:3000", "http://localhost:4321"]  # Astro dev server
+else:
+    origins = [settings.WEB_APP_URL]  # Production domain
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 exception_handler(app)
 
 app.include_router(health_router, tags=["health"])
-# app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(categories_router, prefix="/api/v1/categories", tags=["categories"])
 app.include_router(bills_router, prefix="/api/v1/bills", tags=["bills"])

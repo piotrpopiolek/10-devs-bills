@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,21 +13,6 @@ from src.categories.models import Category
 class ProductIndexService(AppService[ProductIndex, ProductIndexCreate, ProductIndexUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=ProductIndex, session=session)
-
-    async def get_by_id(self, product_index_id: int) -> ProductIndex:
-        stmt = select(ProductIndex).where(ProductIndex.id == product_index_id)
-        result = await self.session.execute(stmt)
-        product_index = result.scalar_one_or_none()
-
-        if not product_index:
-            raise ResourceNotFoundError("ProductIndex", product_index_id)
-        
-        return product_index
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[ProductIndex]:
-        stmt = select(ProductIndex).offset(skip).limit(limit).order_by(ProductIndex.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def _ensure_unique_name(self, name: str, exclude_id: Optional[int] = None) -> None:
         """

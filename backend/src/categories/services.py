@@ -15,16 +15,6 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=Category, session=session)
 
-    async def get_by_id(self, category_id: int) -> Category:
-        stmt = select(Category).where(Category.id == category_id)
-        result = await self.session.execute(stmt)
-        category = result.scalar_one_or_none()
-
-        if not category:
-            raise ResourceNotFoundError("Category", category_id)
-        
-        return category
-
     async def create(self, data: CategoryCreate) -> Category:
         await self._ensure_unique(model=Category, field=Category.name, value=data.name, resource_name="Category", field_name="name")
 

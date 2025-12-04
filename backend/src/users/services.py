@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,21 +12,6 @@ from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsEr
 class UserService(AppService[User, UserCreate, UserUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=User, session=session)
-
-    async def get_by_id(self, user_id: int) -> User:
-        stmt = select(User).where(User.id == user_id)
-        result = await self.session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-        if not user:
-            raise ResourceNotFoundError("User", user_id)
-        
-        return user
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[User]:
-        stmt = select(User).offset(skip).limit(limit).order_by(User.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def _ensure_unique_external_id(self, external_id: int, exclude_id: Optional[int] = None) -> None:
         """

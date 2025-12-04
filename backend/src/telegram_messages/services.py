@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,21 +14,6 @@ from src.bills.models import Bill
 class TelegramMessageService(AppService[TelegramMessage, TelegramMessageCreate, TelegramMessageUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=TelegramMessage, session=session)
-
-    async def get_by_id(self, message_id: int) -> TelegramMessage:
-        stmt = select(TelegramMessage).where(TelegramMessage.id == message_id)
-        result = await self.session.execute(stmt)
-        message = result.scalar_one_or_none()
-
-        if not message:
-            raise ResourceNotFoundError("TelegramMessage", message_id)
-        
-        return message
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[TelegramMessage]:
-        stmt = select(TelegramMessage).offset(skip).limit(limit).order_by(TelegramMessage.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def _ensure_unique_telegram_message_id(self, telegram_message_id: int, exclude_id: Optional[int] = None) -> None:
         """

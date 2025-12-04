@@ -10,6 +10,12 @@ from src.categories.exceptions import (
     CategoryCycleError, 
     CategoryHasChildrenError
 )
+from src.auth.exceptions import (
+    InvalidTokenError,
+    TokenExpiredError,
+    TokenAlreadyUsedError,
+    UserNotFoundError as AuthUserNotFoundError
+)
 
 def exception_handler(app: FastAPI) -> None:
     """
@@ -42,6 +48,34 @@ def exception_handler(app: FastAPI) -> None:
     async def category_has_children_handler(request: Request, exc: CategoryHasChildrenError):
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
+            content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(InvalidTokenError)
+    async def invalid_token_handler(request: Request, exc: InvalidTokenError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(TokenExpiredError)
+    async def token_expired_handler(request: Request, exc: TokenExpiredError):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(TokenAlreadyUsedError)
+    async def token_already_used_handler(request: Request, exc: TokenAlreadyUsedError):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(AuthUserNotFoundError)
+    async def auth_user_not_found_handler(request: Request, exc: AuthUserNotFoundError):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
             content={"detail": str(exc)},
         )
 

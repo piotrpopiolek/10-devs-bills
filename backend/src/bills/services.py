@@ -1,4 +1,3 @@
-from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,21 +12,6 @@ from src.shops.models import Shop
 class BillService(AppService[Bill, BillCreate, BillUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=Bill, session=session)
-
-    async def get_by_id(self, bill_id: int) -> Bill:
-        stmt = select(Bill).where(Bill.id == bill_id)
-        result = await self.session.execute(stmt)
-        bill = result.scalar_one_or_none()
-
-        if not bill:
-            raise ResourceNotFoundError("Bill", bill_id)
-        
-        return bill
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[Bill]:
-        stmt = select(Bill).offset(skip).limit(limit).order_by(Bill.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def create(self, data: BillCreate) -> Bill:
         # User Existence Check (Referential Integrity check before DB hit)

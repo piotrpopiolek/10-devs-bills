@@ -18,7 +18,7 @@ async def get_user_service(session: Annotated[AsyncSession, Depends(get_session)
 
 ServiceDependency = Annotated[UserService, Depends(get_user_service)]
 
-@router.get("/", response_model=list[UserListResponse], status_code=status.HTTP_200_OK, summary="List all users")
+@router.get("/", response_model=UserListResponse, status_code=status.HTTP_200_OK, summary="List all users")
 async def get_users(service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
     return await service.get_all(skip=skip, limit=limit)
 

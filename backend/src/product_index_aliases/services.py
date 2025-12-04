@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,21 +15,6 @@ from src.users.models import User
 class ProductIndexAliasService(AppService[ProductIndexAlias, ProductIndexAliasCreate, ProductIndexAliasUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=ProductIndexAlias, session=session)
-
-    async def get_by_id(self, alias_id: int) -> ProductIndexAlias:
-        stmt = select(ProductIndexAlias).where(ProductIndexAlias.id == alias_id)
-        result = await self.session.execute(stmt)
-        alias = result.scalar_one_or_none()
-
-        if not alias:
-            raise ResourceNotFoundError("ProductIndexAlias", alias_id)
-        
-        return alias
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[ProductIndexAlias]:
-        stmt = select(ProductIndexAlias).offset(skip).limit(limit).order_by(ProductIndexAlias.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
 
     async def _ensure_unique_alias(self, raw_name: str, index_id: int, exclude_id: Optional[int] = None) -> None:
         """

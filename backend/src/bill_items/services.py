@@ -15,21 +15,6 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=BillItem, session=session)
 
-    async def get_by_id(self, bill_item_id: int) -> BillItem:
-        stmt = select(BillItem).where(BillItem.id == bill_item_id)
-        result = await self.session.execute(stmt)
-        bill_item = result.scalar_one_or_none()
-
-        if not bill_item:
-            raise ResourceNotFoundError("BillItem", bill_item_id)
-        
-        return bill_item
-
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[BillItem]:
-        stmt = select(BillItem).offset(skip).limit(limit).order_by(BillItem.id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
-
     async def create(self, data: BillItemCreate) -> BillItem:
         # Bill Existence Check (Referential Integrity check before DB hit)
         await self._ensure_exists(model=Bill, field=Bill.id, value=data.bill_id, resource_name="Bill")

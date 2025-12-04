@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
