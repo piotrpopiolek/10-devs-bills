@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Telegram
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_WEBHOOK_URL: str | None = None
+    TELEGRAM_WEBHOOK_SECRET: str | None = None
     
     # OpenAI
     OPENAI_API_KEY: str

@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.main import get_session
+from src.deps import CurrentUser
+from src.middleware.rate_limit import check_monthly_bills_limit
 from src.bills.schemas import (
     BillCreate, 
     BillUpdate, 
@@ -27,8 +29,10 @@ async def get_bill(bill_id: int, service: ServiceDependency):
     return await service.get_by_id(bill_id)
 
 
-@router.post("/", response_model=BillResponse, status_code=status.HTTP_201_CREATED, summary="Create a new bill")
-async def create_bill(data: BillCreate, service: ServiceDependency):
+@router.post("/", response_model=BillResponse, status_code=status.HTTP_201_CREATED, summary="Create a new bill", dependencies=[Depends(check_monthly_bills_limit)])
+async def create_bill(data: BillCreate, service: ServiceDependency, user: CurrentUser):
+    # Enforce user isolation: user_id from token takes precedence
+    data.user_id = user.id
     return await service.create(data)
 
 

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
@@ -11,12 +12,23 @@ from src.product_indexes.routes import router as product_indexes_router
 from src.shops.routes import router as shops_router
 from src.telegram_messages.routes import router as telegram_messages_router
 from src.users.routes import router as users_router
+from src.telegram.routes import router as telegram_router
+from src.telegram.services import TelegramBotService
 from src.error_handler import exception_handler 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Telegram Bot
+    await TelegramBotService.get_application()
+    yield
+    # Shutdown: Stop Telegram Bot
+    await TelegramBotService.shutdown()
 
 app = FastAPI(
     title="Bills API",
     version="1.0.0",
     docs_url="/docs" if settings.ENV == "development" else None,
+    lifespan=lifespan
 )
 
 # CORS Configuration
@@ -45,3 +57,4 @@ app.include_router(product_index_aliases_router, prefix="/api/v1/product-index-a
 app.include_router(product_indexes_router, prefix="/api/v1/product-indexes", tags=["product-indexes"])
 app.include_router(shops_router, prefix="/api/v1/shops", tags=["shops"])
 app.include_router(telegram_messages_router, prefix="/api/v1/telegram-messages", tags=["telegram-messages"])
+app.include_router(telegram_router, prefix="/api/v1", tags=["telegram"])
