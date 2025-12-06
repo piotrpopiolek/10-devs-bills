@@ -210,33 +210,6 @@ async def refresh_tokens(data: TokenRefreshRequest, service: ServiceDependency) 
         )
     )
 
-@router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Get current authenticated user", description="Get profile information for the currently authenticated user. Requires valid JWT access token.")
-async def get_current_user_info(user: CurrentUser) -> UserResponse:
-    """
-    Get current authenticated user profile.
-    
-    This endpoint requires authentication via JWT access token in Authorization header.
-    
-    Args:
-        user: Current authenticated user (injected by dependency)
-        
-    Returns:
-        UserResponse with user profile information
-        
-    Raises:
-        401: If token is invalid, expired, or user not found
-        
-    Example:
-        GET /auth/me
-        Headers: Authorization: Bearer <access_token>
-    """
-    return UserResponse(
-        id=user.id,
-        external_id=user.external_id,
-        is_active=user.is_active,
-        created_at=user.created_at
-    )
-
 # --- ADMIN/DEBUGGING ENDPOINTS FOR MAGIC LINK CRUD ---
 
 @router.get("/admin/magic-links", response_model=MagicLinkListResponse, status_code=status.HTTP_200_OK, summary="List all magic links (Admin)", description="Get paginated list of all magic links. For admin/debugging purposes only.", tags=["admin"])

@@ -1,5 +1,6 @@
+from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +8,8 @@ from src.common.services import AppService
 from src.users.models import User
 from src.users.schemas import UserCreate, UserUpdate
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
+from src.bills.models import Bill
+from src.config import settings
 
 
 class UserService(AppService[User, UserCreate, UserUpdate]):
@@ -92,4 +95,60 @@ class UserService(AppService[User, UserCreate, UserUpdate]):
         except IntegrityError as e:
             await self.session.rollback()
             raise e
+    
+    async def get_bills_count_this_month(self, user_id: int) -> int:
+        """
+        Count bills created by user in the current month.
+        
+        Used for freemium limit tracking (100 bills per month).
+        
+        Args:
+            user_id: User ID to count bills for
+            
+        Returns:
+            Number of bills created in current month
+        """
+        # Get first and last day of current month (timezone-aware)
+        now = datetime.now(timezone.utc)
+        month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+        # Next month's first day (exclusive)
+        if now.month == 12:
+            month_end = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            month_end = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
+        
+        # Count bills in current month
+        stmt = select(func.count(Bill.id)).where(
+            Bill.user_id == user_id,
+            Bill.created_at >= month_start,
+            Bill.created_at < month_end
+        )
+        
+        result = await self.session.execute(stmt)
+        count = result.scalar() or 0
+        
+        return count
+
+    async def get_user_usage_stats(self, user_id: int) -> dict:
+        """
+        Get comprehensive usage statistics for a user.
+        
+        Calculates bills processed this month against the monthly limit.
+        Used for both the profile endpoint and rate limiting checks.
+        
+        Args:
+            user_id: User ID to get stats for
+            
+        Returns:
+            Dictionary with keys: bills_this_month, monthly_limit, remaining_bills
+        """
+        count = await self.get_bills_count_this_month(user_id)
+        limit = settings.MONTHLY_BILLS_LIMIT
+        remaining = max(0, limit - count)
+        
+        return {
+            "bills_this_month": count,
+            "monthly_limit": limit,
+            "remaining_bills": remaining
+        }
 

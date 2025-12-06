@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Frontend
     WEB_APP_URL: str = "http://localhost:4321"
     
+    # Freemium Limits
+    MONTHLY_BILLS_LIMIT: int = 100  # Free tier limit per month
+    
     # Celery
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
     CELERY_RESULT_BACKEND: str = "rpc://"

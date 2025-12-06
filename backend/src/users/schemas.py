@@ -58,3 +58,36 @@ class UserResponse(UserBase):
 class UserListResponse(PaginatedResponse[UserResponse]):
     pass
 
+# --- USAGE STATISTICS ---
+class UsageStats(AppBaseModel):
+    """
+    Usage statistics for freemium model tracking.
+    """
+    bills_this_month: int = Field(
+        ...,
+        ge=0,
+        description="Number of bills processed in current month"
+    )
+    
+    monthly_limit: int = Field(
+        ...,
+        gt=0,
+        description="Monthly limit for bills (100 for free tier)"
+    )
+    
+    remaining_bills: int = Field(
+        ...,
+        ge=0,
+        description="Remaining bills available this month"
+    )
+
+class UserWithUsageResponse(UserResponse):
+    """
+    User profile with usage statistics.
+    Used by GET /users/me endpoint.
+    """
+    usage: UsageStats = Field(
+        ...,
+        description="Usage statistics for freemium model"
+    )
+

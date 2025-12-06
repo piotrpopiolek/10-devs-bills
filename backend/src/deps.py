@@ -2,7 +2,8 @@ import logging
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer
+from fastapi.security.http import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.jwt import get_user_id_from_token
@@ -19,7 +20,7 @@ security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthCredentials, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     db: Annotated[AsyncSession, Depends(get_session)]
 ) -> User:
     """
@@ -31,7 +32,7 @@ async def get_current_user(
     - Verifies user account is active
     
     Args:
-        credentials: HTTP Bearer credentials containing JWT access token
+        credentials: HTTP Authorization credentials containing JWT access token
         db: Database session
         
     Returns:
@@ -97,7 +98,7 @@ async def get_current_user(
         )
 
 async def get_current_user_optional(
-    credentials: Annotated[Optional[HTTPAuthCredentials], Depends(security_optional)],
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security_optional)],
     db: Annotated[AsyncSession, Depends(get_session)]
 ) -> Optional[User]:
     """
@@ -107,7 +108,7 @@ async def get_current_user_optional(
     but don't require authentication (e.g. public content with personalized features).
     
     Args:
-        credentials: Optional HTTP Bearer credentials
+        credentials: Optional HTTP Authorization credentials
         db: Database session
         
     Returns:
