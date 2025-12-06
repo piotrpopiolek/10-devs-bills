@@ -45,7 +45,7 @@ class Bill(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
  
-    status: Mapped[ProcessingStatus] = mapped_column(SAEnum(ProcessingStatus, name='processing_status', create_type=True), nullable=False, default=ProcessingStatus.PENDING, server_default=ProcessingStatus.PENDING.value)
+    status: Mapped[ProcessingStatus] = mapped_column(SAEnum(ProcessingStatus, name='processing_status', create_type=True, values_callable=lambda x: [e.value for e in x]), nullable=False, default=ProcessingStatus.PENDING, server_default=ProcessingStatus.PENDING.value)
     bill_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     total_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)

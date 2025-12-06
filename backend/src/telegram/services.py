@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from fastapi import Request
 
 from src.config import settings
@@ -10,6 +10,10 @@ from src.db.main import AsyncSessionLocal
 from src.users.services import UserService
 from src.auth.services import AuthService
 from src.users.schemas import UserCreate
+from src.bills.services import BillService
+from src.bills.schemas import BillCreate
+from src.bills.models import ProcessingStatus
+from src.storage.service import get_storage_service
 from src.telegram_messages.services import TelegramMessageService
 from src.telegram_messages.schemas import TelegramMessageCreate
 
@@ -48,7 +52,91 @@ class TelegramBotService:
         app.add_handler(CommandHandler("dzis", cls.daily_report_command))
         app.add_handler(CommandHandler("tydzien", cls.weekly_report_command))
         app.add_handler(CommandHandler("miesiac", cls.monthly_report_command))
-        # TODO: Add MessageHandler for photos/documents
+        
+        # Handle photos (receipts)
+        app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, cls.handle_receipt_image))
+
+    @staticmethod
+    async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Handle incoming receipt images.
+        """
+        if not update.message or not update.effective_user:
+            return
+            
+        telegram_id = update.effective_user.id
+        
+        # Notify user we are processing
+        status_message = await update.message.reply_text("Przetwarzam zdjęcie...")
+        
+        async with AsyncSessionLocal() as session:
+            auth_service = AuthService(session)
+            user_service = UserService(session)
+            bill_service = BillService(session)
+            storage_service = get_storage_service()
+            
+            # 1. Get or create user
+            user = await auth_service.get_user_by_telegram_id(telegram_id)
+            if not user:
+                try:
+                    user = await user_service.create(UserCreate(
+                        external_id=telegram_id,
+                        is_active=True
+                    ))
+                except Exception as e:
+                    logger.error(f"Error creating user: {e}", exc_info=True)
+                    await status_message.edit_text("Błąd autoryzacji. Spróbuj /start.")
+                    return
+
+            # 2. Get file from Telegram
+            try:
+                # Get the largest photo or the document
+                if update.message.document:
+                    file_id = update.message.document.file_id
+                else:
+                    # Photos comes in array of different sizes, last one is biggest
+                    file_id = update.message.photo[-1].file_id
+                
+                # Download file
+                new_file = await context.bot.get_file(file_id)
+                file_content = await new_file.download_as_bytearray()
+                
+                # 3. Upload to Storage
+                # Determine extension (default to jpg if unknown)
+                file_path = new_file.file_path
+                extension = "jpg"
+                if file_path:
+                    ext = file_path.split('.')[-1].lower()
+                    if ext in ['jpg', 'jpeg', 'png', 'webp']:
+                        extension = ext
+                
+                image_url, image_hash = await storage_service.upload_file_content(
+                    file_content=bytes(file_content),
+                    user_id=user.id,
+                    extension=extension
+                )
+                
+                # 4. Create Bill record
+                from datetime import datetime, timezone
+                
+                bill_date = update.message.date or datetime.now(timezone.utc)
+                
+                bill = await bill_service.create(BillCreate(
+                    bill_date=bill_date,
+                    user_id=user.id,
+                    image_url=image_url,
+                    image_hash=image_hash,
+                    image_expires_at=storage_service.calculate_expiration_date(),
+                    status=ProcessingStatus.PENDING
+                ))
+                
+                await status_message.edit_text(f"Paragon przyjęty! ID: {bill.id}\nRozpoczynam analizę...")
+                
+                # TODO: Trigger OCR task here
+                
+            except Exception as e:
+                logger.error(f"Error processing receipt: {e}", exc_info=True)
+                await status_message.edit_text("Wystąpił błąd podczas przetwarzania zdjęcia.")
 
     @staticmethod
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

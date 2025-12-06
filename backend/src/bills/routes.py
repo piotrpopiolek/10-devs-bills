@@ -45,4 +45,3 @@ async def update_bill(bill_id: int, data: BillUpdate, service: ServiceDependency
 async def delete_bill(bill_id: int, service: ServiceDependency):
     await service.delete(bill_id)
     return None
-

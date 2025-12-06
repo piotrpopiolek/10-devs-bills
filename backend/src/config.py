@@ -10,9 +10,11 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     
-    # Supabase (for auth, if needed)
+    # Supabase (for auth and storage)
     SUPABASE_URL: str | None = None
     SUPABASE_SERVICE_KEY: str | None = None
+    SUPABASE_STORAGE_BUCKET: str = "bills"
+    
     
     # Telegram
     TELEGRAM_BOT_TOKEN: str
