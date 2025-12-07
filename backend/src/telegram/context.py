@@ -4,11 +4,15 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.main import AsyncSessionLocal
+from src.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
 
 # Context variable to store database session per-request
 _db_session: ContextVar[Optional[AsyncSession]] = ContextVar("db_session", default=None)
+
+# Context variable to store storage service per-request
+_storage_service: ContextVar[Optional[StorageService]] = ContextVar("storage_service", default=None)
 
 
 class SessionContextManager:
@@ -41,6 +45,16 @@ def clear_db_session():
     _db_session.set(None)
 
 
+def set_storage_service(service: StorageService):
+    """Set the storage service for the current context."""
+    _storage_service.set(service)
+
+
+def clear_storage_service():
+    """Clear the storage service from the current context."""
+    _storage_service.set(None)
+
+
 def get_or_create_session():
     """
     Get session from context or create a new one as async context manager.
@@ -56,4 +70,34 @@ def get_or_create_session():
         # Fallback: create new session (for tests or direct calls outside request scope)
         logger.warning("No session in context, creating new session. Ensure this is intended (e.g. tests).")
         return AsyncSessionLocal()
+
+
+def get_storage_service_for_telegram() -> StorageService:
+    """
+    Get StorageService from context or create a new one.
+    
+    This function provides StorageService for Telegram handlers (outside FastAPI DI).
+    It follows the same pattern as get_or_create_session() - uses ContextVar
+    for DI when available (e.g., from FastAPI middleware), or creates a new
+    instance as fallback (for tests or direct calls).
+    
+    Returns:
+        StorageService: StorageService instance from context or newly created
+        
+    Usage:
+        # In Telegram handlers:
+        storage_service = get_storage_service_for_telegram()
+        
+        # In FastAPI middleware (optional, for consistency):
+        storage_service = get_storage_service_for_telegram()
+        set_storage_service(storage_service)
+    """
+    service = _storage_service.get()
+    if service is not None:
+        # Service is provided via DI (e.g., from FastAPI middleware)
+        return service
+    else:
+        # Fallback: create new instance (for Telegram handlers or tests)
+        logger.debug("No storage service in context, creating new instance.")
+        return StorageService()
 

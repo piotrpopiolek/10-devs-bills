@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from supabase import create_client, Client
 from src.config import settings
 
@@ -120,10 +120,33 @@ class StorageService:
     def calculate_expiration_date(self, months: int = 6) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=months * 30)
 
-_storage_service: Optional[StorageService] = None
 
-def get_storage_service() -> StorageService:
-    global _storage_service
-    if _storage_service is None:
-        _storage_service = StorageService()
-    return _storage_service
+# FastAPI Dependency Injection for StorageService
+# This replaces the global singleton pattern with proper DI
+async def get_storage_service() -> StorageService:
+    """
+    FastAPI dependency function that provides StorageService instance.
+    
+    This function is called by FastAPI's dependency injection system
+    for each request that requires StorageService. The service is created
+    per-request, allowing for proper testability and lifecycle management.
+    
+    Returns:
+        StorageService: A new instance of StorageService
+        
+    Usage:
+        # In route handlers or other dependencies:
+        @router.get("/bills")
+        async def get_bills(
+            storage: StorageService = Depends(get_storage_service)
+        ):
+            ...
+            
+        # In service factory functions:
+        async def get_bill_service(
+            session: AsyncSession = Depends(get_session),
+            storage: StorageService = Depends(get_storage_service)
+        ) -> BillService:
+            return BillService(session, storage)
+    """
+    return StorageService()

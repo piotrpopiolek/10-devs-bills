@@ -12,11 +12,15 @@ from src.bills.schemas import (
     BillListResponse
 )
 from src.bills.services import BillService
+from src.storage.service import StorageService, get_storage_service
 
 router = APIRouter()
 
-async def get_bill_service(session: Annotated[AsyncSession, Depends(get_session)]) -> BillService:
-    return BillService(session)
+async def get_bill_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    storage_service: Annotated[StorageService, Depends(get_storage_service)]
+) -> BillService:
+    return BillService(session, storage_service)
 
 ServiceDependency = Annotated[BillService, Depends(get_bill_service)]
 

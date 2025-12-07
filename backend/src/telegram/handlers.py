@@ -13,8 +13,7 @@ from src.common.exceptions import (
     UserCreationError,
     ResourceNotFoundError
 )
-from src.storage.service import get_storage_service
-from src.telegram.context import get_or_create_session
+from src.telegram.context import get_or_create_session, get_storage_service_for_telegram
 from src.telegram.error_mapping import get_user_message
 from src.users.services import UserService
 
@@ -103,9 +102,12 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
     status_message = await update.message.reply_text("Przetwarzam zdjęcie...")
     
     async with get_or_create_session() as session:
+        # Create service instances with proper DI (no direct instantiation)
+        # StorageService is obtained via DI pattern (ContextVar with fallback)
+        # This allows for proper testability and lifecycle management.
+        storage_service = get_storage_service_for_telegram()
         auth_service = AuthService(session)
-        bill_service = BillService(session)
-        storage_service = get_storage_service()
+        bill_service = BillService(session, storage_service)
         
         # 1. Get or create user (eliminates code duplication)
         try:

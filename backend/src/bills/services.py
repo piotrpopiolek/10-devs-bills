@@ -8,13 +8,13 @@ from src.bills.schemas import BillCreate, BillUpdate, BillResponse
 from src.common.exceptions import ResourceNotFoundError
 from src.users.models import User
 from src.shops.models import Shop
-from src.storage.service import get_storage_service
+from src.storage.service import StorageService
 
 
 class BillService(AppService[Bill, BillCreate, BillUpdate]):
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, storage_service: StorageService):
         super().__init__(model=Bill, session=session)
-        self.storage_service = get_storage_service()
+        self.storage_service = storage_service
 
     def _to_response(self, bill: Bill) -> BillResponse:
         """
@@ -34,13 +34,9 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         if bill.image_url:
             image_signed_url = self.storage_service.get_signed_url(bill.image_url)
         
-        return BillResponse.model_validate(
-            {
-                **bill.__dict__,
-                "image_signed_url": image_signed_url
-            },
-            from_attributes=True
-        )
+        response = BillResponse.model_validate(bill, from_attributes=True)
+        response.image_signed_url = image_signed_url
+        return response
 
     async def create(self, data: BillCreate) -> BillResponse:
         # User Existence Check (Referential Integrity check before DB hit)
