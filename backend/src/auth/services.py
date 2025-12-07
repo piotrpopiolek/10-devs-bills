@@ -16,8 +16,11 @@ from src.auth.jwt import create_access_token, create_refresh_token
 from src.auth.models import MagicLink
 from src.auth.schemas import MagicLinkCreate, MagicLinkUpdate
 from src.common.services import AppService
+from src.common.exceptions import UserCreationError, ResourceAlreadyExistsError
 from src.config import settings
 from src.users.models import User
+from src.users.schemas import UserCreate
+from src.users.services import UserService
 
 class AuthService(AppService[MagicLink, MagicLinkCreate, MagicLinkUpdate]):
     """
@@ -304,4 +307,52 @@ class AuthService(AppService[MagicLink, MagicLinkCreate, MagicLinkUpdate]):
         stmt = select(User).where(User.id == user_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+    
+    async def get_or_create_user_by_telegram_id(self, telegram_user_id: int) -> User:
+        """
+        Get existing user by Telegram ID or create a new one.
+        
+        This method encapsulates the "get or create" pattern for Telegram users,
+        eliminating code duplication across handlers. It handles user creation
+        errors and translates them to domain exceptions.
+        
+        Args:
+            telegram_user_id: Telegram user ID (external_id)
+            
+        Returns:
+            User model (existing or newly created)
+            
+        Raises:
+            UserCreationError: If user creation fails for reasons other than duplicate
+            ResourceAlreadyExistsError: If user already exists (should not happen in normal flow)
+            
+        Note:
+            This method follows the DRY principle by centralizing user creation logic
+            that was previously duplicated in login_command and handle_receipt_image handlers.
+        """
+        # Try to get existing user
+        user = await self.get_user_by_telegram_id(telegram_user_id)
+        if user:
+            return user
+        
+        # User doesn't exist, create new one
+        user_service = UserService(self.session)
+        try:
+            user = await user_service.create(UserCreate(
+                external_id=telegram_user_id,
+                is_active=True
+            ))
+            return user
+        except ResourceAlreadyExistsError:
+            # Race condition: user was created between check and create
+            # Retry getting the user
+            user = await self.get_user_by_telegram_id(telegram_user_id)
+            if user:
+                return user
+            # If still not found, re-raise the exception
+            raise
+        except Exception as e:
+            # Wrap unexpected errors in UserCreationError
+            # Note: ResourceAlreadyExistsError is already handled above
+            raise UserCreationError(f"Nieoczekiwany błąd: {str(e)}") from e
 

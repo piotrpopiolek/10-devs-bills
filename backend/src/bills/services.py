@@ -1,19 +1,48 @@
+from typing import Any
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
 from src.bills.models import Bill
-from src.bills.schemas import BillCreate, BillUpdate
+from src.bills.schemas import BillCreate, BillUpdate, BillResponse
 from src.common.exceptions import ResourceNotFoundError
 from src.users.models import User
 from src.shops.models import Shop
+from src.storage.service import get_storage_service
 
 
 class BillService(AppService[Bill, BillCreate, BillUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=Bill, session=session)
+        self.storage_service = get_storage_service()
 
-    async def create(self, data: BillCreate) -> Bill:
+    def _to_response(self, bill: Bill) -> BillResponse:
+        """
+        Convert Bill model to BillResponse schema with signed URL.
+        
+        This method encapsulates the logic for generating signed URLs
+        and converting Bill models to BillResponse schemas, following
+        the DRY principle to avoid code duplication.
+        
+        Args:
+            bill: The Bill model instance to convert
+            
+        Returns:
+            BillResponse with image_signed_url populated if image_url exists
+        """
+        image_signed_url = None
+        if bill.image_url:
+            image_signed_url = self.storage_service.get_signed_url(bill.image_url)
+        
+        return BillResponse.model_validate(
+            {
+                **bill.__dict__,
+                "image_signed_url": image_signed_url
+            },
+            from_attributes=True
+        )
+
+    async def create(self, data: BillCreate) -> BillResponse:
         # User Existence Check (Referential Integrity check before DB hit)
         await self._ensure_exists(model=User, field=User.id, value=data.user_id, resource_name="User")
 
@@ -45,15 +74,17 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
             await self.session.rollback()
             raise e
 
-        return new_bill
+        return self._to_response(new_bill)
 
-    async def update(self, bill_id: int, data: BillUpdate) -> Bill:
-        bill = await self.get_by_id(bill_id)
+    async def update(self, bill_id: int, data: BillUpdate) -> BillResponse:
+        # Use super().get_by_id() to get Bill model, not BillResponse
+        bill = await super().get_by_id(bill_id)
 
         update_data = data.model_dump(exclude_unset=True)
 
         if not update_data:
-            return bill
+            # Even if no updates, return BillResponse with signed URL
+            return self._to_response(bill)
 
         # User Existence Check (if user_id is being updated)
         if "user_id" in update_data and update_data["user_id"] != bill.user_id:
@@ -76,10 +107,38 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
             await self.session.rollback()
             raise e
 
-        return bill
+        return self._to_response(bill)
+
+    async def get_by_id(self, bill_id: int) -> BillResponse:
+        """
+        Get bill by ID and generate signed URL for the image.
+        Overrides base method to add image_signed_url to response.
+        """
+        bill = await super().get_by_id(bill_id)
+        return self._to_response(bill)
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> dict[str, Any]:
+        """
+        Get all bills with pagination and generate signed URLs for images.
+        Overrides base method to add image_signed_url to each bill.
+        """
+        result = await super().get_all(skip=skip, limit=limit)
+        
+        # Generate signed URLs for each bill
+        bills_with_urls = [
+            self._to_response(bill) for bill in result["items"]
+        ]
+        
+        return {
+            "items": bills_with_urls,
+            "total": result["total"],
+            "skip": result["skip"],
+            "limit": result["limit"]
+        }
 
     async def delete(self, bill_id: int) -> None:
-        bill = await self.get_by_id(bill_id)
+        # Use super().get_by_id() to get Bill model, not BillResponse
+        bill = await super().get_by_id(bill_id)
         
         self.session.delete(bill)
         

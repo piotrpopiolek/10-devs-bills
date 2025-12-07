@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
 from src.users.models import User
 from src.users.schemas import UserCreate, UserUpdate
-from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
+from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError, UserCreationError
 from src.bills.models import Bill
 from src.config import settings
 
@@ -50,10 +50,17 @@ class UserService(AppService[User, UserCreate, UserUpdate]):
             await self.session.refresh(new_user)
         except IntegrityError as e:
             await self.session.rollback()
-            # Check if it's a unique constraint violation
+            # Check if it's a unique constraint violation (PostgreSQL error code 23505)
             if "external_id" in str(e.orig) or "idx_users_external_id" in str(e.orig) or "23505" in str(e.orig):
                 raise ResourceAlreadyExistsError("User", "external_id", data.external_id) from e
-            raise e
+            # Other integrity errors (e.g., foreign key violations, check constraints)
+            raise UserCreationError(f"Błąd bazy danych: {str(e)}") from e
+        except Exception as e:
+            await self.session.rollback()
+            # Wrap unexpected errors in UserCreationError
+            if isinstance(e, (ResourceAlreadyExistsError, UserCreationError)):
+                raise
+            raise UserCreationError(f"Nieoczekiwany błąd podczas tworzenia użytkownika: {str(e)}") from e
 
         return new_user
 

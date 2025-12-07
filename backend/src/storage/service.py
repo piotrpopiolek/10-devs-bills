@@ -20,13 +20,15 @@ class StorageService:
     
     def __init__(self):
         self.supabase_client: Optional[Client] = None
-        self.use_supabase = bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY)
+        # Backend always prefers Service Role key for full access (bypass RLS)
+        self.key = settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_KEY
+        self.use_supabase = bool(settings.SUPABASE_URL and self.key)
         
         if self.use_supabase:
             try:
                 self.supabase_client = create_client(
                     settings.SUPABASE_URL,
-                    settings.SUPABASE_SERVICE_KEY
+                    self.key
                 )
                 logger.info("Supabase Storage client initialized")
             except Exception as e:
@@ -53,7 +55,7 @@ class StorageService:
     
     async def upload_file_content(self, file_content: bytes, user_id: int, extension: str = "jpg", content_type: str = "image/jpeg") -> tuple[str, str]:
         """
-        Upload raw file content (bytes) and return URL and hash.
+        Upload raw file content (bytes) and return storage path and hash.
         Used by Telegram Bot service.
         """
         if len(file_content) > MAX_FILE_SIZE:
@@ -68,17 +70,18 @@ class StorageService:
                  
             try:
                 bucket_name = settings.SUPABASE_STORAGE_BUCKET
+                # Use upsert=true to overwrite existing files
                 self.supabase_client.storage.from_(bucket_name).upload(
                     path=file_path,
                     file=file_content,
-                    file_options={"content-type": content_type}
+                    file_options={"content-type": content_type, "upsert": "true"}
                 )
-                public_url = self.supabase_client.storage.from_(bucket_name).get_public_url(file_path)
+                # Return the internal storage path, NOT the public URL
+                # Access will be granted via signed URLs
                 logger.info(f"File uploaded to Supabase: {file_path}")
-                return public_url, file_hash
+                return file_path, file_hash
             except Exception as e:
                 logger.error(f"Failed to upload to Supabase: {e}", exc_info=True)
-                # Fallback or re-raise? Re-raising to let caller know
                 raise e
         else:
             # Local upload
@@ -87,7 +90,32 @@ class StorageService:
             with open(full_path, "wb") as f:
                 f.write(file_content)
             logger.info(f"File uploaded locally: {full_path}")
-            return f"/uploads/bills/{file_path}", file_hash
+            # Return relative path consistent with storage path concept
+            return str(file_path).replace("\\", "/"), file_hash
+    
+    def get_signed_url(self, file_path: str, expiry_seconds: int = 3600) -> str:
+        """
+        Generate a signed URL for a file in Supabase Storage.
+        Valid for `expiry_seconds` (default 1 hour).
+        """
+        if not self.use_supabase:
+             # Fallback for local storage (assuming static file serving)
+             # This requires static mounting in main.py
+             return f"{settings.WEB_APP_URL}/uploads/bills/{file_path}"
+
+        if not self.supabase_client:
+            return ""
+            
+        try:
+            bucket_name = settings.SUPABASE_STORAGE_BUCKET
+            response = self.supabase_client.storage.from_(bucket_name).create_signed_url(
+                path=file_path,
+                expires_in=expiry_seconds
+            )
+            return response['signedURL']
+        except Exception as e:
+            logger.error(f"Failed to generate signed URL: {e}", exc_info=True)
+            return ""
     
     def calculate_expiration_date(self, months: int = 6) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=months * 30)
@@ -99,4 +127,3 @@ def get_storage_service() -> StorageService:
     if _storage_service is None:
         _storage_service = StorageService()
     return _storage_service
-

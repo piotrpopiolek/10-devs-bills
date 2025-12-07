@@ -180,6 +180,10 @@ class BillResponse(BillBase):
     id: int = Field(..., gt=0)
     created_at: datetime
     updated_at: datetime
+    image_signed_url: Optional[str] = Field(
+        None,
+        description="Temporary signed URL for accessing the receipt image (valid for 1 hour)"
+    )
 
 class BillListResponse(PaginatedResponse[BillResponse]):
     pass

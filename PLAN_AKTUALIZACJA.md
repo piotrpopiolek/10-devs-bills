@@ -1,0 +1,302 @@
+# Plan kolejnych kroków — Bills MVP (Zaktualizowany)
+
+**Data aktualizacji:** 2024-12-19  
+**Status ogólny:** ~35% ukończone
+
+---
+
+## ✅ Ukończone (Faza 1 - Foundation)
+
+### 1.1. GET /users/me z usage statistics ✅
+
+- **Status:** Ukończone
+- **Endpoint:** `GET /api/v1/users/me`
+- **Funkcjonalność:** Zwraca profil użytkownika z statystykami użycia (bills_this_month, monthly_limit, remaining_bills)
+- **Pliki:** `backend/src/users/routes.py`, `backend/src/users/services.py`
+
+### 1.2. Rate limiting middleware ✅
+
+- **Status:** Ukończone
+- **Funkcjonalność:** Middleware sprawdzający limit 100 paragonów/miesiąc
+- **Implementacja:** Dependency `check_monthly_bills_limit` w `POST /bills`
+- **Pliki:** `backend/src/middleware/rate_limit.py`
+
+### 1.3. User isolation w Bills (częściowo) 🟡
+
+- **Status:** Częściowo ukończone
+- **Zrobione:**
+  - ✅ `POST /bills` - wymusza `user_id` z tokena JWT
+  - ✅ Rate limiting działa per user
+- **Brakujące:**
+  - 🔴 `GET /bills` - nadal zwraca wszystkie paragony (brak filtrowania po `current_user.id`)
+  - 🔴 `GET /bills/{id}` - brak sprawdzania ownership
+  - 🔴 `DELETE /bills/{id}` - brak sprawdzania ownership
+  - 🔴 `PATCH /bills/{id}` - brak sprawdzania ownership
+
+### 3.1. Telegram Webhook endpoint ✅
+
+- **Status:** Ukończone
+- **Endpoint:** `POST /api/v1/webhooks/telegram`
+- **Funkcjonalność:** Odbiera aktualizacje z Telegrama, weryfikuje secret token
+- **Pliki:** `backend/src/telegram/routes.py`, `backend/src/telegram/services.py`
+
+### 3.2. Telegram Bot Service (podstawowe komendy) ✅
+
+- **Status:** Ukończone
+- **Zaimplementowane komendy:**
+  - ✅ `/start` - powitanie
+  - ✅ `/login` - generowanie magic link i auto-rejestracja użytkownika
+  - ✅ `/dzis`, `/tydzien`, `/miesiac` - placeholdery (do integracji z Reports)
+- **Pliki:** `backend/src/telegram/services.py`
+
+### 3.3. Storage Service ✅
+
+- **Status:** Ukończone
+- **Funkcjonalność:** Serwis do uploadu plików do Supabase Storage z fallbackiem do lokalnego storage
+- **Zaimplementowane:**
+  - ✅ Upload plików (bytes) z walidacją rozmiaru (max 20MB)
+  - ✅ Generowanie SHA256 hash dla deduplikacji
+  - ✅ Integracja z Supabase Storage
+  - ✅ Fallback do lokalnego storage
+  - ✅ Generowanie ścieżek plików per user
+  - ✅ Obliczanie daty wygaśnięcia (6 miesięcy)
+- **Pliki:** `backend/src/storage/service.py`
+
+### 3.4. Telegram Bot - obsługa zdjęć paragonów ✅
+
+- **Status:** Ukończone
+- **Funkcjonalność:** Automatyczne przetwarzanie zdjęć paragonów wysłanych do bota
+- **Zaimplementowane:**
+  - ✅ `MessageHandler` dla photos i documents
+  - ✅ Pobieranie pliku z Telegram API
+  - ✅ Upload do Storage Service
+  - ✅ Tworzenie rekordu Bill z statusem PENDING
+  - ✅ Auto-rejestracja użytkownika przy pierwszym użyciu
+- **Brakujące:**
+  - 🔴 Integracja z OCR Service (TODO w linii 135)
+  - 🔴 Potwierdzenie przetworzenia po zakończeniu OCR/AI
+- **Pliki:** `backend/src/telegram/services.py` (handle_receipt_image)
+
+### 8.1. Frontend Auth Verification Page ✅
+
+- **Status:** Ukończone
+- **Strona:** `/auth/verify`
+- **Funkcjonalność:** Weryfikuje token z URL, zapisuje sesję, przekierowuje na dashboard
+- **Pliki:** `astro/src/pages/auth/verify.astro`
+
+### 8.2. Auth Service Frontend ✅
+
+- **Status:** Ukończone
+- **Funkcjonalność:** Serwis do zarządzania autentykacją (verify, setSession, clearSession, isAuthenticated)
+- **Pliki:** `astro/src/lib/services/auth.ts`
+
+---
+
+## 🔴 Krytyczne (Blokujące MVP)
+
+### 1.4. File upload dla POST /bills
+
+- **Status:** Brak (StorageService istnieje, ale endpoint nie obsługuje multipart)
+- **Priorytet:** Wysoki
+- **Zadania:**
+  - Zmienić `POST /bills` na `multipart/form-data` (użyć `File` z FastAPI)
+  - Dodać walidację pliku (format: jpg/png/webp, rozmiar: max 20MB - zgodnie z StorageService)
+  - Wykorzystać istniejący `StorageService` do uploadu
+  - Zaktualizować `BillCreate` schema (opcjonalne pola dla image_url, image_hash)
+  - Dodać `image_url` i `image_hash` do response
+- **Uwaga:** StorageService już istnieje i działa, więc implementacja będzie prostsza
+- **Szacunek:** 3-4h
+
+### 1.3. User isolation w Bills (dokończenie)
+
+- **Status:** Częściowo
+- **Priorytet:** Wysoki
+- **Zadania:**
+  - Dodać `CurrentUser` dependency do `GET /bills` i filtrować po `user_id`
+  - Dodać sprawdzanie ownership w `GET /bills/{id}`, `DELETE /bills/{id}`, `PATCH /bills/{id}`
+  - Zmodyfikować `BillService.get_all()` aby przyjmował `user_id` jako filtr
+- **Szacunek:** 2h
+
+### 5.1. OCR Service
+
+- **Status:** Brak
+- **Priorytet:** Wysoki
+- **Zadania:**
+  - Utworzyć `backend/src/ocr/service.py`
+  - Integracja z PaddlePaddle-OCR
+  - Dodać preprocessing obrazów
+  - Dodać error handling dla nieczytelnych paragonów
+  - Zwracać structured data (items, total, date)
+- **Szacunek:** 8-10h
+
+### 5.2. AI Categorization Service
+
+- **Status:** Brak
+- **Priorytet:** Wysoki
+- **Zadania:**
+  - Utworzyć `backend/src/ai/service.py`
+  - Integracja z OpenAI API
+  - Dodać prompt engineering dla kategoryzacji
+  - Dodać normalizację nazw produktów
+  - Mapowanie do Product Index (słownik produktów)
+  - Fallback do kategorii "Inne"
+- **Szacunek:** 10-12h
+
+### 5.3. Receipt Processing Pipeline
+
+- **Status:** Brak
+- **Priorytet:** Wysoki
+- **Zadania:**
+  - Utworzyć `ReceiptProcessorService`
+  - Zintegrować OCR → AI → Database
+  - Dodać walidację sumy (items total vs receipt total)
+  - Dodać background task (Dramatiq/Celery) dla async processing
+  - Dodać status tracking (pending → processing → completed/error)
+- **Szacunek:** 12-15h
+
+---
+
+## 🟡 Ważne (Dla pełnego MVP)
+
+### 2.1. Reports module
+
+- **Status:** Brak
+- **Priorytet:** Średni
+- **Zadania:**
+  - Utworzyć `backend/src/reports/` module
+  - Zaimplementować `GET /api/v1/reports/daily`
+  - Zaimplementować `GET /api/v1/reports/weekly`
+  - Zaimplementować `GET /api/v1/reports/monthly`
+  - Dodać logikę agregacji (top categories, shops breakdown)
+  - Filtrować po `current_user.id`
+- **Szacunek:** 6-8h
+
+### 3.2. Telegram Bot Service (rozbudowa)
+
+- **Status:** Częściowo (obsługa zdjęć gotowa, brak integracji z OCR/AI)
+- **Priorytet:** Średni
+- **Zrobione:**
+  - ✅ Obsługa zdjęć paragonów (MessageHandler dla photos/documents)
+  - ✅ Upload do Storage i tworzenie Bill record
+- **Brakujące funkcjonalności:**
+  - 🔴 `send_receipt_confirmation(bill_id)` - potwierdzenie przetworzenia (po zakończeniu OCR/AI)
+  - 🔴 `send_verification_request(bill_item_id)` - prośba o weryfikację (dla confidence < 0.8)
+  - 🔴 `send_summary(user_id, period)` - podsumowanie wydatków (integracja z Reports)
+  - 🔴 Integracja z Receipt Processing Pipeline (trigger OCR task)
+- **Szacunek:** 4-5h (po zaimplementowaniu OCR/AI)
+
+### 4.1. Verification workflow
+
+- **Status:** Częściowo (endpoint istnieje, brak integracji)
+- **Priorytet:** Średni
+- **Zadania:**
+  - Ulepszyć `PUT /bill-items/{id}/verify`
+  - Dodać `GET /bill-items/pending-verification`
+  - Dodać logikę confidence threshold (< 0.8 → weryfikacja)
+  - Integracja z Telegram Bot Service
+  - Dodać `verification_source` enum (auto/user)
+- **Szacunek:** 4-5h
+
+---
+
+## 🟢 Nice to have (Można odłożyć)
+
+### 6.1. Admin endpoints
+
+- **Status:** Brak
+- **Priorytet:** Niski
+- **Zadania:**
+  - Dodać `is_admin` field do User model
+  - Utworzyć `require_admin()` dependency w `deps.py`
+  - Dodać admin-only endpoints dla categories/products
+- **Szacunek:** 3-4h
+
+### 7.1. Security & Polish
+
+- **Status:** Częściowo
+- **Priorytet:** Niski
+- **Zadania:**
+  - Zweryfikować CORS dla production
+  - Dodać security headers (HSTS, CSP)
+  - Dodać walidację dat (nie w przyszłości)
+  - Dodać walidację sum (items total = bill total)
+- **Szacunek:** 2-3h
+
+---
+
+## 📋 Rekomendowany plan działania
+
+### Sprint 1 (Tydzień 1-2): Foundation + User Isolation ✅ (częściowo)
+
+- ✅ GET /users/me z usage statistics
+- ✅ Rate limiting middleware
+- 🟡 User isolation w Bills (POST done, GET/DELETE pending)
+- 🔴 File upload dla POST /bills
+
+### Sprint 2 (Tydzień 3-4): Core Features
+
+- 🔴 Dokończenie User isolation (GET/DELETE/PATCH)
+- 🔴 File upload dla POST /bills (wykorzystać StorageService)
+- 🟡 Reports module (daily/weekly/monthly)
+- ✅ Telegram Bot Service - obsługa zdjęć (zrobione, brak integracji z OCR)
+
+### Sprint 3 (Tydzień 5-6): AI & Processing
+
+- 🔴 OCR Service
+- 🔴 AI Categorization Service
+- 🔴 Receipt Processing Pipeline
+
+### Sprint 4 (Tydzień 7-8): Polish & Integration
+
+- 🟡 Verification workflow improvements
+- 🟡 Telegram Bot Service - pełna integracja z Reports
+- 🟢 Admin endpoints
+- 🟢 Security enhancements
+
+---
+
+## 🎯 Priorytetyzacja (według PRD MVP)
+
+### Krytyczne (blokujące MVP):
+
+- ✅ Auth (zrobione)
+- ✅ Rate limiting
+- 🟡 User isolation (POST done, GET/DELETE/PATCH pending) - **KRYTYCZNE dla bezpieczeństwa**
+- 🔴 File upload dla POST /bills (StorageService gotowy, brak endpointu multipart)
+- ✅ Telegram webhook
+- ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation)
+- ✅ Storage Service (Supabase + fallback)
+- 🔴 OCR Service
+- 🔴 AI Categorization
+- 🔴 Receipt Processing Pipeline
+
+### Ważne (dla pełnego MVP):
+
+- 🟡 Reports
+- 🟡 Telegram Bot Service (rozbudowa)
+- 🟡 Verification workflow
+
+### Nice to have (można odłożyć):
+
+- 🟢 Admin endpoints
+- 🟢 Security polish
+
+---
+
+## 📊 Postęp ogólny
+
+- **Ukończone:** ~35% (+5% od ostatniej aktualizacji)
+- **W trakcie:** ~10%
+- **Do zrobienia:** ~55%
+
+**Ostatnie osiągnięcia:**
+
+- ✅ Storage Service zintegrowany z Supabase Storage
+- ✅ Telegram Bot - pełna obsługa zdjęć paragonów (upload + tworzenie Bill)
+- ✅ Auto-rejestracja użytkowników przez Telegram
+
+**Następne kroki (priorytet):**
+
+1. 🔴 Dokończenie User isolation w Bills (GET/DELETE/PATCH) - **KRYTYCZNE dla bezpieczeństwa**
+2. 🔴 File upload dla POST /bills (wykorzystać istniejący StorageService)
+3. 🔴 OCR Service (początek integracji z PaddlePaddle)

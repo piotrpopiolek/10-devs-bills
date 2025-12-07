@@ -12,3 +12,10 @@ class ResourceAlreadyExistsError(AppError):
     def __init__(self, resource_name: str, field: str, value: any):
         self.message = f"{resource_name} z {field} '{value}' już istnieje."
         super().__init__(self.message)
+
+class UserCreationError(AppError):
+    """Error when user creation fails for reasons other than duplicate."""
+    def __init__(self, reason: str):
+        self.message = f"Nie udało się utworzyć użytkownika: {reason}"
+        self.reason = reason
+        super().__init__(self.message)
