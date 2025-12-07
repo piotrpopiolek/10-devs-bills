@@ -199,6 +199,69 @@ Out of scope (MVP):
 - Bank account integrations.
 - Multi-currency support.
 
+## Testing
+
+### Backend Tests (pytest)
+
+```bash
+# Z katalogu backend/
+cd backend
+
+# Wszystkie testy
+pytest
+
+# Testy z pokryciem
+pytest --cov=src --cov-report=html
+
+# Konkretny plik
+pytest tests/example_test.py
+
+# Testy z markerem
+pytest -m unit
+pytest -m integration
+```
+
+Więcej informacji: `backend/tests/README.md`
+
+### Frontend Tests
+
+#### Testy jednostkowe (Vitest)
+
+```bash
+# Z katalogu astro/
+cd astro
+
+# Wszystkie testy
+npm run test
+
+# Tryb watch
+npm run test:watch
+
+# UI mode
+npm run test:ui
+
+# Z pokryciem
+npm run test:coverage
+```
+
+#### Testy E2E (Playwright)
+
+```bash
+# Z katalogu astro/
+cd astro
+
+# Wszystkie testy E2E
+npm run test:e2e
+
+# UI mode
+npm run test:e2e:ui
+
+# Debug mode
+npm run test:e2e:debug
+```
+
+Więcej informacji: `astro/src/test/README.md`
+
 ## Project status
 
 MVP in progress. Initial focus:

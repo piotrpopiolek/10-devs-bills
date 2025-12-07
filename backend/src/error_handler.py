@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from src.common.exceptions import (
     ResourceNotFoundError, 
     ResourceAlreadyExistsError,
+    BillAccessDeniedError,
     AppError
 )
 from src.categories.exceptions import (
@@ -77,5 +78,12 @@ def exception_handler(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(BillAccessDeniedError)
+    async def bill_access_denied_handler(request: Request, exc: BillAccessDeniedError):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": exc.message},
         )
 
