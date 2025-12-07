@@ -133,7 +133,7 @@
 
 - **Description**: List user's bills with pagination and filtering
 - **Query Parameters**:
-  - `page` (optional, default: 1)
+  - `skip` (optional, default: 0)
   - `limit` (optional, default: 20, max: 100)
   - `status` (optional: pending, processing, completed, error)
   - `shop_id` (optional)
@@ -144,7 +144,7 @@
 
 ```json
 {
-  "bills": [
+  "items": [
     {
       "id": 1,
       "bill_date": "2024-01-01T10:30:00Z",
@@ -158,12 +158,9 @@
       "created_at": "2024-01-01T10:30:00Z"
     }
   ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 150,
-    "pages": 8
-  }
+  "total": 150,
+  "skip": 0,
+  "limit": 20
 }
 ```
 
@@ -275,7 +272,7 @@
 
 - **Description**: Get items pending user verification
 - **Query Parameters**:
-  - `page` (optional, default: 1)
+  - `skip` (optional, default: 0)
   - `limit` (optional, default: 20)
 - **Request Body**: None
 - **Response Body**:
@@ -306,12 +303,9 @@
       }
     }
   ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 5,
-    "pages": 1
-  }
+  "total": 5,
+  "skip": 0,
+  "limit": 20
 }
 ```
 
@@ -325,14 +319,14 @@
 - **Description**: List shops with search functionality
 - **Query Parameters**:
   - `search` (optional, search by name)
-  - `page` (optional, default: 1)
+  - `skip` (optional, default: 0)
   - `limit` (optional, default: 20)
 - **Request Body**: None
 - **Response Body**:
 
 ```json
 {
-  "shops": [
+  "items": [
     {
       "id": 1,
       "name": "Supermarket ABC",
@@ -341,12 +335,9 @@
       "created_at": "2024-01-01T00:00:00Z"
     }
   ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 25,
-    "pages": 2
-  }
+  "total": 25,
+  "skip": 0,
+  "limit": 20
 }
 ```
 
@@ -418,14 +409,14 @@
 - **Query Parameters**:
   - `search` (optional, search by name)
   - `category_id` (optional)
-  - `page` (optional, default: 1)
+  - `skip` (optional, default: 0)
   - `limit` (optional, default: 20)
 - **Request Body**: None
 - **Response Body**:
 
 ```json
 {
-  "products": [
+  "items": [
     {
       "id": 1,
       "name": "Milk",
@@ -438,12 +429,9 @@
       "created_at": "2024-01-01T00:00:00Z"
     }
   ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 500,
-    "pages": 25
-  }
+  "total": 500,
+  "skip": 0,
+  "limit": 20
 }
 ```
 

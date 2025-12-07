@@ -33,3 +33,15 @@ Astro 5, TypeScript 5, React 19, Tailwind 4
 ### **Infrastruktura**
 
 - **Reverse Proxy:** Nginx
+
+---
+
+### **Testowanie**
+
+- **Backend:**
+  - **Framework testowy:** pytest
+  - **Testy asynchroniczne:** pytest-asyncio
+  - **Mockowanie:** pytest-mock, unittest.mock
+- **Frontend:**
+  - **Testy jednostkowe:** Vitest
+  - **Testy E2E:** Playwright

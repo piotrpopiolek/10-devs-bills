@@ -1,11 +1,11 @@
 from typing import Any
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
 from src.bills.models import Bill
 from src.bills.schemas import BillCreate, BillUpdate, BillResponse
-from src.common.exceptions import ResourceNotFoundError
+from src.common.exceptions import ResourceNotFoundError, BillAccessDeniedError
 from src.users.models import User
 from src.shops.models import Shop
 from src.storage.service import StorageService
@@ -72,9 +72,32 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
 
         return self._to_response(new_bill)
 
-    async def update(self, bill_id: int, data: BillUpdate) -> BillResponse:
-        # Use super().get_by_id() to get Bill model, not BillResponse
-        bill = await super().get_by_id(bill_id)
+    async def update(self, bill_id: int, data: BillUpdate, user_id: int) -> BillResponse:
+        """
+        Update bill by ID with user ownership check.
+        
+        Args:
+            bill_id: ID of the bill to update
+            data: BillUpdate schema with fields to update
+            user_id: ID of the user requesting the update (must own the bill)
+            
+        Returns:
+            BillResponse with signed URL
+            
+        Raises:
+            BillAccessDeniedError: If bill exists but doesn't belong to user_id
+            ResourceNotFoundError: If bill doesn't exist
+        """
+        # Ownership check: get bill and verify it belongs to user_id
+        stmt = select(Bill).where(Bill.id == bill_id)
+        result = await self.session.execute(stmt)
+        bill = result.scalar_one_or_none()
+        
+        if not bill:
+            raise ResourceNotFoundError("Bill", bill_id)
+        
+        if bill.user_id != user_id:
+            raise BillAccessDeniedError(bill_id)
 
         update_data = data.model_dump(exclude_unset=True)
 
@@ -82,9 +105,9 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
             # Even if no updates, return BillResponse with signed URL
             return self._to_response(bill)
 
-        # User Existence Check (if user_id is being updated)
+        # Prevent changing ownership via update (user_id should not be updatable)
         if "user_id" in update_data and update_data["user_id"] != bill.user_id:
-            await self._ensure_exists(model=User, field=User.id, value=update_data["user_id"], resource_name="User")
+            raise BillAccessDeniedError(bill_id)
 
         # Shop Existence Check (if shop_id is being updated)
         if "shop_id" in update_data and update_data["shop_id"] != bill.shop_id:
@@ -109,32 +132,103 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         """
         Get bill by ID and generate signed URL for the image.
         Overrides base method to add image_signed_url to response.
+        
+        Note: This method does not check ownership. Use get_by_id_and_user() 
+        for user-isolated access.
         """
         bill = await super().get_by_id(bill_id)
         return self._to_response(bill)
+    
+    async def get_by_id_and_user(self, bill_id: int, user_id: int) -> BillResponse:
+        """
+        Get bill by ID for a specific user and generate signed URL for the image.
+        Enforces user isolation by checking ownership.
+        
+        Args:
+            bill_id: ID of the bill to retrieve
+            user_id: ID of the user requesting the bill (must own the bill)
+            
+        Returns:
+            BillResponse with signed URL
+            
+        Raises:
+            BillAccessDeniedError: If bill exists but doesn't belong to user_id
+            ResourceNotFoundError: If bill doesn't exist
+        """
+        stmt = select(Bill).where(Bill.id == bill_id)
+        result = await self.session.execute(stmt)
+        bill = result.scalar_one_or_none()
+        
+        if not bill:
+            raise ResourceNotFoundError("Bill", bill_id)
+        
+        if bill.user_id != user_id:
+            raise BillAccessDeniedError(bill_id)
+        
+        return self._to_response(bill)
 
-    async def get_all(self, skip: int = 0, limit: int = 100) -> dict[str, Any]:
+    async def get_all(self, user_id: int, skip: int = 0, limit: int = 100) -> dict[str, Any]:
         """
-        Get all bills with pagination and generate signed URLs for images.
-        Overrides base method to add image_signed_url to each bill.
+        Get all bills for a specific user with pagination and generate signed URLs for images.
+        
+        Args:
+            user_id: ID of the user whose bills to retrieve (required for user isolation)
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            
+        Returns:
+            Dictionary with paginated bills and signed URLs
         """
-        result = await super().get_all(skip=skip, limit=limit)
+        # Count total bills for this user
+        count_stmt = select(func.count()).select_from(Bill).where(Bill.user_id == user_id)
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+        
+        # Fetch bills filtered by user_id
+        stmt = (
+            select(Bill)
+            .where(Bill.user_id == user_id)
+            .offset(skip)
+            .limit(limit)
+            .order_by(Bill.id)
+        )
+        result = await self.session.execute(stmt)
+        bills = result.scalars().all()
         
         # Generate signed URLs for each bill
         bills_with_urls = [
-            self._to_response(bill) for bill in result["items"]
+            self._to_response(bill) for bill in bills
         ]
         
         return {
             "items": bills_with_urls,
-            "total": result["total"],
-            "skip": result["skip"],
-            "limit": result["limit"]
+            "total": total,
+            "skip": skip,
+            "limit": limit
         }
 
-    async def delete(self, bill_id: int) -> None:
-        # Use super().get_by_id() to get Bill model, not BillResponse
-        bill = await super().get_by_id(bill_id)
+    async def delete(self, bill_id: int, user_id: int) -> None:
+        """
+        Delete bill by ID with user ownership check.
+        
+        Args:
+            bill_id: ID of the bill to delete
+            user_id: ID of the user requesting the deletion (must own the bill)
+            
+        Raises:
+            BillAccessDeniedError: If bill exists but doesn't belong to user_id
+            ResourceNotFoundError: If bill doesn't exist
+        """
+        # Ownership check: get bill and verify it belongs to user_id
+        stmt = select(Bill).where(Bill.id == bill_id)
+        result = await self.session.execute(stmt)
+        bill = result.scalar_one_or_none()
+        
+        if not bill:
+            raise ResourceNotFoundError("Bill", bill_id)
+        
+        if bill.user_id != user_id:
+            raise BillAccessDeniedError(bill_id)
         
         self.session.delete(bill)
         

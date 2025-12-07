@@ -19,3 +19,10 @@ class UserCreationError(AppError):
         self.message = f"Nie udało się utworzyć użytkownika: {reason}"
         self.reason = reason
         super().__init__(self.message)
+
+class BillAccessDeniedError(AppError):
+    """Error when user tries to access a bill that doesn't belong to them."""
+    def __init__(self, bill_id: int):
+        self.message = f"Paragon z identyfikatorem {bill_id} nie znaleziono."
+        self.bill_id = bill_id
+        super().__init__(self.message)

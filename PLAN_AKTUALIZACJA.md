@@ -1,7 +1,7 @@
 # Plan kolejnych kroków — Bills MVP (Zaktualizowany)
 
 **Data aktualizacji:** 2024-12-19  
-**Status ogólny:** ~35% ukończone
+**Status ogólny:** ~40% ukończone
 
 ---
 
@@ -21,17 +21,20 @@
 - **Implementacja:** Dependency `check_monthly_bills_limit` w `POST /bills`
 - **Pliki:** `backend/src/middleware/rate_limit.py`
 
-### 1.3. User isolation w Bills (częściowo) 🟡
+### 1.3. User isolation w Bills ✅
 
-- **Status:** Częściowo ukończone
-- **Zrobione:**
+- **Status:** Ukończone
+- **Zaimplementowane:**
   - ✅ `POST /bills` - wymusza `user_id` z tokena JWT
+  - ✅ `GET /bills` - filtruje paragony po `current_user.id`
+  - ✅ `GET /bills/{id}` - sprawdza ownership (zwraca 403 jeśli nie należy do użytkownika)
+  - ✅ `PATCH /bills/{id}` - sprawdza ownership przed aktualizacją, blokuje zmianę `user_id`
+  - ✅ `DELETE /bills/{id}` - sprawdza ownership przed usunięciem
   - ✅ Rate limiting działa per user
-- **Brakujące:**
-  - 🔴 `GET /bills` - nadal zwraca wszystkie paragony (brak filtrowania po `current_user.id`)
-  - 🔴 `GET /bills/{id}` - brak sprawdzania ownership
-  - 🔴 `DELETE /bills/{id}` - brak sprawdzania ownership
-  - 🔴 `PATCH /bills/{id}` - brak sprawdzania ownership
+  - ✅ `BillService.get_all(user_id)` - filtrowanie na poziomie SQL
+  - ✅ `BillService.get_by_id_and_user()` - nowa metoda z weryfikacją ownership
+  - ✅ `BillAccessDeniedError` - błąd domenowy z handlerem HTTP 403
+- **Pliki:** `backend/src/bills/routes.py`, `backend/src/bills/services.py`, `backend/src/common/exceptions.py`, `backend/src/error_handler.py`
 
 ### 3.1. Telegram Webhook endpoint ✅
 
@@ -93,29 +96,6 @@
 ---
 
 ## 🔴 Krytyczne (Blokujące MVP)
-
-### 1.4. File upload dla POST /bills
-
-- **Status:** Brak (StorageService istnieje, ale endpoint nie obsługuje multipart)
-- **Priorytet:** Wysoki
-- **Zadania:**
-  - Zmienić `POST /bills` na `multipart/form-data` (użyć `File` z FastAPI)
-  - Dodać walidację pliku (format: jpg/png/webp, rozmiar: max 20MB - zgodnie z StorageService)
-  - Wykorzystać istniejący `StorageService` do uploadu
-  - Zaktualizować `BillCreate` schema (opcjonalne pola dla image_url, image_hash)
-  - Dodać `image_url` i `image_hash` do response
-- **Uwaga:** StorageService już istnieje i działa, więc implementacja będzie prostsza
-- **Szacunek:** 3-4h
-
-### 1.3. User isolation w Bills (dokończenie)
-
-- **Status:** Częściowo
-- **Priorytet:** Wysoki
-- **Zadania:**
-  - Dodać `CurrentUser` dependency do `GET /bills` i filtrować po `user_id`
-  - Dodać sprawdzanie ownership w `GET /bills/{id}`, `DELETE /bills/{id}`, `PATCH /bills/{id}`
-  - Zmodyfikować `BillService.get_all()` aby przyjmował `user_id` jako filtr
-- **Szacunek:** 2h
 
 ### 5.1. OCR Service
 
@@ -201,6 +181,16 @@
 
 ## 🟢 Nice to have (Można odłożyć)
 
+### 1.4. File upload dla POST /bills (opcjonalne)
+
+- **Status:** Nie wymagane (wszystkie zdjęcia przesyłane przez Telegram)
+- **Priorytet:** Niski (można odłożyć)
+- **Uwaga:** Jeśli w przyszłości będzie potrzeba bezpośredniego uploadu przez API (np. dla integracji z innymi aplikacjami), można zaimplementować:
+  - Zmienić `POST /bills` na `multipart/form-data` (użyć `File` z FastAPI)
+  - Dodać walidację pliku (format: jpg/png/webp, rozmiar: max 20MB)
+  - Wykorzystać istniejący `StorageService` do uploadu
+- **Szacunek:** 3-4h (jeśli będzie potrzebne)
+
 ### 6.1. Admin endpoints
 
 - **Status:** Brak
@@ -226,17 +216,14 @@
 
 ## 📋 Rekomendowany plan działania
 
-### Sprint 1 (Tydzień 1-2): Foundation + User Isolation ✅ (częściowo)
+### Sprint 1 (Tydzień 1-2): Foundation + User Isolation ✅
 
 - ✅ GET /users/me z usage statistics
 - ✅ Rate limiting middleware
-- 🟡 User isolation w Bills (POST done, GET/DELETE pending)
-- 🔴 File upload dla POST /bills
+- ✅ User isolation w Bills (wszystkie endpointy zabezpieczone)
 
 ### Sprint 2 (Tydzień 3-4): Core Features
 
-- 🔴 Dokończenie User isolation (GET/DELETE/PATCH)
-- 🔴 File upload dla POST /bills (wykorzystać StorageService)
 - 🟡 Reports module (daily/weekly/monthly)
 - ✅ Telegram Bot Service - obsługa zdjęć (zrobione, brak integracji z OCR)
 
@@ -261,8 +248,7 @@
 
 - ✅ Auth (zrobione)
 - ✅ Rate limiting
-- 🟡 User isolation (POST done, GET/DELETE/PATCH pending) - **KRYTYCZNE dla bezpieczeństwa**
-- 🔴 File upload dla POST /bills (StorageService gotowy, brak endpointu multipart)
+- ✅ User isolation (wszystkie endpointy zabezpieczone) - **UKOŃCZONE**
 - ✅ Telegram webhook
 - ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation)
 - ✅ Storage Service (Supabase + fallback)
@@ -285,18 +271,23 @@
 
 ## 📊 Postęp ogólny
 
-- **Ukończone:** ~35% (+5% od ostatniej aktualizacji)
-- **W trakcie:** ~10%
+- **Ukończone:** ~40% (+5% od ostatniej aktualizacji)
+- **W trakcie:** ~5%
 - **Do zrobienia:** ~55%
 
 **Ostatnie osiągnięcia:**
 
+- ✅ User isolation w Bills - wszystkie endpointy zabezpieczone (GET/POST/PATCH/DELETE)
+- ✅ `BillAccessDeniedError` - błąd domenowy z globalnym handlerem (HTTP 403)
+- ✅ Filtrowanie na poziomie SQL (`WHERE user_id = ?`) dla `GET /bills`
+- ✅ Sprawdzanie ownership przed każdą operacją modyfikującą
 - ✅ Storage Service zintegrowany z Supabase Storage
 - ✅ Telegram Bot - pełna obsługa zdjęć paragonów (upload + tworzenie Bill)
-- ✅ Auto-rejestracja użytkowników przez Telegram
 
 **Następne kroki (priorytet):**
 
-1. 🔴 Dokończenie User isolation w Bills (GET/DELETE/PATCH) - **KRYTYCZNE dla bezpieczeństwa**
-2. 🔴 File upload dla POST /bills (wykorzystać istniejący StorageService)
-3. 🔴 OCR Service (początek integracji z PaddlePaddle)
+1. 🔴 OCR Service (początek integracji z PaddlePaddle) - **KRYTYCZNE dla MVP**
+2. 🔴 AI Categorization Service (integracja z OpenAI)
+3. 🔴 Receipt Processing Pipeline (integracja OCR → AI → Database)
+
+**Uwaga:** File upload dla POST /bills nie jest wymagany - wszystkie zdjęcia paragonów są przesyłane przez Telegram Bot (zaimplementowane w 3.4).
