@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     
     # OpenAI
     OPENAI_API_KEY: str
+    OPENAI_MODEL: str = "gpt-4o"  # Domyślny model
+    OPENAI_TIMEOUT: int = 30  # Timeout w sekundach
+    GEMINI_API_KEY: str
+    GEMINI_MODEL: str = "gemini-2.5-flash"  # Domyślny model
+    GEMINI_TIMEOUT: int = 30  # Timeout w sekundach
     
     # JWT Authentication
     JWT_SECRET_KEY: str

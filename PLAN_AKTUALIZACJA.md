@@ -1,7 +1,7 @@
 # Plan kolejnych kroków — Bills MVP (Zaktualizowany)
 
-**Data aktualizacji:** 2025-12-07 (zaktualizowano: zmiana strategii OCR)  
-**Status ogólny:** ~40% ukończone
+**Data aktualizacji:** 2025-12-08 (zaktualizowano: OCR Service zaimplementowany)  
+**Status ogólny:** ~50% ukończone
 
 ---
 
@@ -67,7 +67,7 @@
 
 ### 3.4. Telegram Bot - obsługa zdjęć paragonów ✅
 
-- **Status:** Ukończone
+- **Status:** Ukończone (częściowo - brak integracji z OCR)
 - **Funkcjonalność:** Automatyczne przetwarzanie zdjęć paragonów wysłanych do bota
 - **Zaimplementowane:**
   - ✅ `MessageHandler` dla photos i documents
@@ -76,9 +76,32 @@
   - ✅ Tworzenie rekordu Bill z statusem PENDING
   - ✅ Auto-rejestracja użytkownika przy pierwszym użyciu
 - **Brakujące:**
-  - 🔴 Integracja z OCR Service (TODO w linii 135)
+  - 🔴 Integracja z OCR Service (TODO w linii 173 w `handlers.py`)
   - 🔴 Potwierdzenie przetworzenia po zakończeniu OCR/AI
-- **Pliki:** `backend/src/telegram/services.py` (handle_receipt_image)
+- **Pliki:** `backend/src/telegram/handlers.py` (handle_receipt_image)
+
+### 5.1. OCR Service (LLM-based) ✅
+
+- **Status:** Ukończone
+- **Priorytet:** Wysoki
+- **Założenia MVP:**
+  - Implementacja oparta na modelach LLM (Gemini 1.5 Flash)
+  - Szybsze do wdrożenia, wystarczające dla MVP
+  - Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP (patrz sekcja "🟢 Nice to have")
+- **Zaimplementowane:**
+  - ✅ `backend/src/ocr/services.py` - `OCRService` z metodą `extract_data()`
+  - ✅ Integracja z Gemini API (Google Generative AI)
+  - ✅ Prompt engineering dla ekstrakcji danych z paragonów polskich
+  - ✅ Error handling dla nieczytelnych paragonów (`FileValidationError`, `ExtractionError`, `AIServiceError`)
+  - ✅ Zwraca structured data (items, total, date, shop_name) w formacie JSON
+  - ✅ Walidacja odpowiedzi LLM za pomocą Pydantic schemas (`LLMReceiptExtraction`, `OCRReceiptData`)
+  - ✅ Retry logic z tenacity dla błędów API (ResourceExhausted, ServiceUnavailable, etc.)
+  - ✅ Walidacja plików (magic bytes, rozmiar max 10MB, formaty: JPEG, PNG, WEBP)
+  - ✅ Walidacja sumy pozycji vs total_amount (±10% tolerancja)
+  - ✅ Endpoint `POST /api/v1/ocr/extract` z rate limiting (5 req/min per user)
+  - ✅ Zwraca `category_suggestion` dla każdego produktu (podstawowa kategoryzacja)
+- **Pliki:** `backend/src/ocr/services.py`, `backend/src/ocr/routes.py`, `backend/src/ocr/schemas.py`, `backend/src/ocr/exceptions.py`
+- **Uwaga:** Używa Gemini API zamiast OpenAI Vision API (podobne rozwiązanie LLM-based)
 
 ### 8.1. Frontend Auth Verification Page ✅
 
@@ -97,47 +120,34 @@
 
 ## 🔴 Krytyczne (Blokujące MVP)
 
-### 5.1. OCR Service (LLM-based)
-
-- **Status:** Brak
-- **Priorytet:** Wysoki
-- **Założenia MVP:**
-  - Pierwsza implementacja będzie oparta na modelach LLM (OpenAI Vision API / GPT-4 Vision)
-  - Szybsze do wdrożenia, wystarczające dla MVP
-  - Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP (patrz sekcja "🟢 Nice to have")
-- **Zadania:**
-  - Utworzyć `backend/src/ocr/service.py`
-  - Integracja z OpenAI Vision API (lub podobnym modelem LLM)
-  - Dodać prompt engineering dla ekstrakcji danych z paragonów
-  - Dodać error handling dla nieczytelnych paragonów
-  - Zwracać structured data (items, total, date) w formacie JSON
-  - Walidacja odpowiedzi LLM za pomocą Pydantic schemas
-- **Szacunek:** 4-6h (znacznie szybsze niż PaddlePaddle)
-
 ### 5.2. AI Categorization Service
 
-- **Status:** Brak
+- **Status:** Częściowo (podstawowa kategoryzacja w OCR Service)
 - **Priorytet:** Wysoki
-- **Zadania:**
-  - Utworzyć `backend/src/ai/service.py`
-  - Integracja z OpenAI API
-  - Dodać prompt engineering dla kategoryzacji
-  - Dodać normalizację nazw produktów
-  - Mapowanie do Product Index (słownik produktów)
-  - Fallback do kategorii "Inne"
-- **Szacunek:** 10-12h
+- **Zrobione:**
+  - ✅ OCR Service zwraca `category_suggestion` dla każdego produktu (podstawowa kategoryzacja przez LLM)
+- **Brakujące:**
+  - 🔴 Osobny serwis `backend/src/ai/service.py` dla zaawansowanej kategoryzacji
+  - 🔴 Normalizacja nazw produktów (mapowanie wariantów OCR na standardowe nazwy)
+  - 🔴 Mapowanie do Product Index (słownik produktów w bazie danych)
+  - 🔴 Fallback do kategorii "Inne" dla nieznanych produktów
+  - 🔴 Uczenie się na podstawie weryfikacji użytkownika (product aliases)
+- **Szacunek:** 8-10h (uproszczone dzięki podstawowej kategoryzacji w OCR)
 
 ### 5.3. Receipt Processing Pipeline
 
 - **Status:** Brak
 - **Priorytet:** Wysoki
 - **Zadania:**
-  - Utworzyć `ReceiptProcessorService`
-  - Zintegrować OCR (LLM-based) → AI Categorization → Database
-  - Dodać walidację sumy (items total vs receipt total)
-  - Dodać background task (Dramatiq) dla async processing
-  - Dodać status tracking (pending → processing → completed/error)
-- **Szacunek:** 10-12h (uproszczone dzięki LLM-based OCR)
+  - Utworzyć `ReceiptProcessorService` (lub podobny orchestrator)
+  - Zintegrować OCR Service → AI Categorization → Database
+  - Dodać integrację z Telegram Bot (wywołanie OCR po uploadzie zdjęcia)
+  - Dodać walidację sumy (items total vs receipt total) - częściowo w OCR Service
+  - Dodać background task (Dramatiq/Celery) dla async processing
+  - Dodać status tracking (pending → processing → completed/error) w Bill model
+  - Zapis bill_items z danymi z OCR (name, quantity, prices, category_suggestion, confidence_score)
+  - Aktualizacja statusu Bill po zakończeniu przetwarzania
+- **Szacunek:** 8-10h (uproszczone dzięki gotowemu OCR Service)
 
 ---
 
@@ -163,12 +173,14 @@
 - **Zrobione:**
   - ✅ Obsługa zdjęć paragonów (MessageHandler dla photos/documents)
   - ✅ Upload do Storage i tworzenie Bill record
+  - ✅ OCR Service gotowy do integracji
 - **Brakujące funkcjonalności:**
+  - 🔴 Integracja OCR Service w `handle_receipt_image()` (TODO w linii 173)
   - 🔴 `send_receipt_confirmation(bill_id)` - potwierdzenie przetworzenia (po zakończeniu OCR/AI)
   - 🔴 `send_verification_request(bill_item_id)` - prośba o weryfikację (dla confidence < 0.8)
   - 🔴 `send_summary(user_id, period)` - podsumowanie wydatków (integracja z Reports)
   - 🔴 Integracja z Receipt Processing Pipeline (trigger OCR task)
-- **Szacunek:** 4-5h (po zaimplementowaniu OCR/AI)
+- **Szacunek:** 4-5h (po zaimplementowaniu Receipt Processing Pipeline)
 
 ### 4.1. Verification workflow
 
@@ -250,8 +262,8 @@
 
 ### Sprint 3 (Tydzień 5-6): AI & Processing
 
-- 🔴 OCR Service (LLM-based - OpenAI Vision API)
-- 🔴 AI Categorization Service
+- ✅ OCR Service (LLM-based - Gemini API) - **UKOŃCZONE**
+- 🟡 AI Categorization Service (częściowo - podstawowa kategoryzacja w OCR)
 - 🔴 Receipt Processing Pipeline
 
 ### Sprint 4 (Tydzień 7-8): Polish & Integration
@@ -273,8 +285,8 @@
 - ✅ Telegram webhook
 - ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation)
 - ✅ Storage Service (Supabase + fallback)
-- 🔴 OCR Service (LLM-based)
-- 🔴 AI Categorization
+- ✅ OCR Service (LLM-based - Gemini API) - **UKOŃCZONE**
+- 🟡 AI Categorization (częściowo - podstawowa kategoryzacja w OCR)
 - 🔴 Receipt Processing Pipeline
 
 ### Ważne (dla pełnego MVP):
@@ -292,12 +304,17 @@
 
 ## 📊 Postęp ogólny
 
-- **Ukończone:** ~40% (+5% od ostatniej aktualizacji)
+- **Ukończone:** ~50% (+10% od ostatniej aktualizacji)
 - **W trakcie:** ~5%
-- **Do zrobienia:** ~55%
+- **Do zrobienia:** ~45%
 
 **Ostatnie osiągnięcia:**
 
+- ✅ OCR Service (LLM-based) - pełna implementacja z Gemini API
+  - Ekstrakcja danych z paragonów (items, total, date, shop_name)
+  - Walidacja plików, error handling, retry logic
+  - Endpoint `POST /api/v1/ocr/extract` z rate limiting
+  - Podstawowa kategoryzacja produktów (category_suggestion)
 - ✅ User isolation w Bills - wszystkie endpointy zabezpieczone (GET/POST/PATCH/DELETE)
 - ✅ `BillAccessDeniedError` - błąd domenowy z globalnym handlerem (HTTP 403)
 - ✅ Filtrowanie na poziomie SQL (`WHERE user_id = ?`) dla `GET /bills`
@@ -307,10 +324,10 @@
 
 **Następne kroki (priorytet):**
 
-1. 🔴 OCR Service (LLM-based - OpenAI Vision API) - **KRYTYCZNE dla MVP**
-2. 🔴 AI Categorization Service (integracja z OpenAI)
-3. 🔴 Receipt Processing Pipeline (integracja OCR → AI → Database)
+1. 🔴 Receipt Processing Pipeline (integracja OCR → AI → Database) - **KRYTYCZNE dla MVP**
+2. 🟡 AI Categorization Service (rozbudowa - normalizacja, Product Index mapping)
+3. 🟡 Integracja OCR Service z Telegram Bot (wywołanie OCR po uploadzie)
 
-**Uwaga:** Zmiana strategii OCR - pierwsza implementacja oparta na modelach LLM (szybsza do wdrożenia), pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP jako ulepszenie.
+**Uwaga:** OCR Service został zaimplementowany z użyciem Gemini API (podobne rozwiązanie LLM-based jak planowane OpenAI Vision API). Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP jako ulepszenie.
 
 **Uwaga:** File upload dla POST /bills nie jest wymagany - wszystkie zdjęcia paragonów są przesyłane przez Telegram Bot (zaimplementowane w 3.4).

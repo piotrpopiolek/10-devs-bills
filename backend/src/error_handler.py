@@ -17,6 +17,11 @@ from src.auth.exceptions import (
     TokenAlreadyUsedError,
     UserNotFoundError as AuthUserNotFoundError
 )
+from src.ocr.exceptions import (
+    FileValidationError,
+    ExtractionError,
+    AIServiceError,
+)
 
 def exception_handler(app: FastAPI) -> None:
     """
@@ -85,5 +90,26 @@ def exception_handler(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={"detail": exc.message},
+        )
+
+    @app.exception_handler(FileValidationError)
+    async def file_validation_error_handler(request: Request, exc: FileValidationError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(ExtractionError)
+    async def extraction_error_handler(request: Request, exc: ExtractionError):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(AIServiceError)
+    async def ai_service_error_handler(request: Request, exc: AIServiceError):
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": "AI Service temporarily unavailable"},
         )
 
