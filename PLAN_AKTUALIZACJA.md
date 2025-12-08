@@ -1,6 +1,6 @@
 # Plan kolejnych kroków — Bills MVP (Zaktualizowany)
 
-**Data aktualizacji:** 2024-12-19  
+**Data aktualizacji:** 2025-12-07 (zaktualizowano: zmiana strategii OCR)  
 **Status ogólny:** ~40% ukończone
 
 ---
@@ -97,17 +97,22 @@
 
 ## 🔴 Krytyczne (Blokujące MVP)
 
-### 5.1. OCR Service
+### 5.1. OCR Service (LLM-based)
 
 - **Status:** Brak
 - **Priorytet:** Wysoki
+- **Założenia MVP:**
+  - Pierwsza implementacja będzie oparta na modelach LLM (OpenAI Vision API / GPT-4 Vision)
+  - Szybsze do wdrożenia, wystarczające dla MVP
+  - Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP (patrz sekcja "🟢 Nice to have")
 - **Zadania:**
   - Utworzyć `backend/src/ocr/service.py`
-  - Integracja z PaddlePaddle-OCR
-  - Dodać preprocessing obrazów
+  - Integracja z OpenAI Vision API (lub podobnym modelem LLM)
+  - Dodać prompt engineering dla ekstrakcji danych z paragonów
   - Dodać error handling dla nieczytelnych paragonów
-  - Zwracać structured data (items, total, date)
-- **Szacunek:** 8-10h
+  - Zwracać structured data (items, total, date) w formacie JSON
+  - Walidacja odpowiedzi LLM za pomocą Pydantic schemas
+- **Szacunek:** 4-6h (znacznie szybsze niż PaddlePaddle)
 
 ### 5.2. AI Categorization Service
 
@@ -128,11 +133,11 @@
 - **Priorytet:** Wysoki
 - **Zadania:**
   - Utworzyć `ReceiptProcessorService`
-  - Zintegrować OCR → AI → Database
+  - Zintegrować OCR (LLM-based) → AI Categorization → Database
   - Dodać walidację sumy (items total vs receipt total)
-  - Dodać background task (Dramatiq/Celery) dla async processing
+  - Dodać background task (Dramatiq) dla async processing
   - Dodać status tracking (pending → processing → completed/error)
-- **Szacunek:** 12-15h
+- **Szacunek:** 10-12h (uproszczone dzięki LLM-based OCR)
 
 ---
 
@@ -212,6 +217,22 @@
   - Dodać walidację sum (items total = bill total)
 - **Szacunek:** 2-3h
 
+### 7.2. PaddlePaddle OCR (Post-MVP)
+
+- **Status:** Zaplanowane po MVP
+- **Priorytet:** Niski (ulepszenie po MVP)
+- **Założenia:**
+  - Zastąpi LLM-based OCR po zakończeniu MVP
+  - Lepsza dokładność i kontrola nad procesem OCR
+  - Możliwość lokalnego przetwarzania (offline)
+- **Zadania:**
+  - Integracja z PaddlePaddle-OCR
+  - Dodać preprocessing obrazów (deskewing, denoising, contrast enhancement)
+  - Dodać post-processing (confidence scoring, text cleaning)
+  - Migracja z LLM-based OCR do PaddlePaddle
+  - Zachować kompatybilność API (abstrakcja OCR Service)
+- **Szacunek:** 8-10h
+
 ---
 
 ## 📋 Rekomendowany plan działania
@@ -229,7 +250,7 @@
 
 ### Sprint 3 (Tydzień 5-6): AI & Processing
 
-- 🔴 OCR Service
+- 🔴 OCR Service (LLM-based - OpenAI Vision API)
 - 🔴 AI Categorization Service
 - 🔴 Receipt Processing Pipeline
 
@@ -252,7 +273,7 @@
 - ✅ Telegram webhook
 - ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation)
 - ✅ Storage Service (Supabase + fallback)
-- 🔴 OCR Service
+- 🔴 OCR Service (LLM-based)
 - 🔴 AI Categorization
 - 🔴 Receipt Processing Pipeline
 
@@ -286,8 +307,10 @@
 
 **Następne kroki (priorytet):**
 
-1. 🔴 OCR Service (początek integracji z PaddlePaddle) - **KRYTYCZNE dla MVP**
+1. 🔴 OCR Service (LLM-based - OpenAI Vision API) - **KRYTYCZNE dla MVP**
 2. 🔴 AI Categorization Service (integracja z OpenAI)
 3. 🔴 Receipt Processing Pipeline (integracja OCR → AI → Database)
+
+**Uwaga:** Zmiana strategii OCR - pierwsza implementacja oparta na modelach LLM (szybsza do wdrożenia), pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP jako ulepszenie.
 
 **Uwaga:** File upload dla POST /bills nie jest wymagany - wszystkie zdjęcia paragonów są przesyłane przez Telegram Bot (zaimplementowane w 3.4).
