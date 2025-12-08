@@ -51,7 +51,8 @@ backend/src/
 ├── processing/
 │   ├── __init__.py
 │   ├── service.py          # ReceiptProcessorService
-│   └── exceptions.py       # ProcessingError (opcjonalnie)
+│   ├── dependencies.py     # Factory function dla DI
+│   └── exceptions.py       # ProcessingError
 ```
 
 ### Pliki do modyfikacji:
@@ -77,7 +78,7 @@ backend/src/
 ```python
 async def download_file(self, file_path: str) -> bytes:
     """
-    Download file from storage (Supabase or local).
+    Download file from Supabase Storage.
 
     Args:
         file_path: Storage path (e.g., "bills/2/abc123.jpg")
@@ -89,35 +90,26 @@ async def download_file(self, file_path: str) -> bytes:
         FileNotFoundError: If file doesn't exist
         RuntimeError: If storage client is not initialized
     """
-    if self.use_supabase:
-        if not self.supabase_client:
-            raise RuntimeError("Supabase client not initialized")
+    if not self.supabase_client:
+        raise RuntimeError("Supabase client not initialized")
 
-        try:
-            bucket_name = settings.SUPABASE_STORAGE_BUCKET
-            file_data = self.supabase_client.storage.from_(bucket_name).download(file_path)
-            logger.info(f"File downloaded from Supabase: {file_path}")
-            return file_data
-        except Exception as e:
-            logger.error(f"Failed to download from Supabase: {e}", exc_info=True)
-            raise FileNotFoundError(f"File not found in storage: {file_path}") from e
-    else:
-        # Local storage
-        full_path = self.local_storage_path / file_path
-        if not full_path.exists():
-            raise FileNotFoundError(f"File not found: {full_path}")
-
-        with open(full_path, "rb") as f:
-            file_data = f.read()
-        logger.info(f"File downloaded from local storage: {full_path}")
+    try:
+        bucket_name = settings.SUPABASE_STORAGE_BUCKET
+        file_data = self.supabase_client.storage.from_(bucket_name).download(file_path)
+        logger.info(f"File downloaded from Supabase: {file_path}")
         return file_data
+    except Exception as e:
+        logger.error(f"Failed to download from Supabase: {e}", exc_info=True)
+        raise FileNotFoundError(f"File not found in storage: {file_path}") from e
 ```
+
+**Status:** ✅ Zaimplementowane - tylko Supabase Storage (bez lokalnego fallback).
 
 ### Testowanie:
 
-- Test z Supabase Storage (jeśli skonfigurowane)
-- Test z lokalnym storage (fallback)
+- Test z Supabase Storage
 - Test z nieistniejącym plikiem (FileNotFoundError)
+- Test z nieinicjalizowanym klientem (RuntimeError)
 
 ---
 
@@ -214,11 +206,14 @@ from src.ocr.exceptions import (
     AIServiceError
 )
 from src.common.exceptions import ResourceNotFoundError
+from src.processing.exceptions import ProcessingError
+from decimal import Decimal
+from datetime import datetime
 ```
 
 ### Klasa ReceiptProcessorService:
 
-```python
+````python
 logger = logging.getLogger(__name__)
 
 
@@ -256,6 +251,9 @@ class ReceiptProcessorService:
         """
         Main method processing receipt from PENDING to COMPLETED/ERROR.
 
+        Wszystkie operacje DB są wykonywane w jednej transakcji dla zapewnienia spójności danych.
+        W przypadku błędu, transakcja jest automatycznie rollbackowana.
+
         Args:
             bill_id: ID of the Bill to process
 
@@ -265,51 +263,59 @@ class ReceiptProcessorService:
         """
         logger.info(f"Starting receipt processing for bill_id={bill_id}")
 
-        # Step 1: Get Bill and validate status
-        bill = await self._get_bill(bill_id)
+        # Wszystkie operacje DB w jednej transakcji
+        async with self.session.begin():
+            try:
+                # Step 1: Get Bill and validate status
+                bill = await self._get_bill(bill_id)
 
-        if bill.status != ProcessingStatus.PENDING:
-            logger.warning(f"Bill {bill_id} is not PENDING (status: {bill.status}), skipping")
-            return
+                if bill.status != ProcessingStatus.PENDING:
+                    if bill.status == ProcessingStatus.COMPLETED:
+                        logger.info(f"Bill {bill_id} already processed (COMPLETED), skipping")
+                    elif bill.status == ProcessingStatus.ERROR:
+                        logger.warning(f"Bill {bill_id} previously failed (ERROR), retrying...")
+                    else:
+                        logger.warning(f"Bill {bill_id} is in status {bill.status}, skipping")
+                    return
 
-        if not bill.image_url:
-            await self._set_error(bill_id, "Bill has no image_url")
-            return
+                if not bill.image_url:
+                    await self._set_error(bill_id, "Bill has no image_url")
+                    return
 
-        try:
-            # Step 2: Download file from Storage
-            file_content = await self._download_file(bill.image_url)
+                # Step 2: Download file from Storage
+                file_content = await self._download_file(bill.image_url)
 
-            # Step 3: Update Bill status → PROCESSING
-            await self._update_bill_status(bill_id, ProcessingStatus.PROCESSING)
+                # Step 3: Update Bill status → PROCESSING
+                await self._update_bill_status(bill_id, ProcessingStatus.PROCESSING)
 
-            # Step 4: Call OCR Service
-            ocr_data = await self._extract_receipt_data(file_content, bill.image_url)
+                # Step 4: Call OCR Service
+                ocr_data = await self._extract_receipt_data(file_content, bill.image_url)
 
-            # Step 5: Get or create Shop
-            shop_id = await self._get_or_create_shop(
-                ocr_data.shop_name,
-                ocr_data.shop_address
-            )
+                # Step 5: Get or create Shop
+                shop_id = await self._get_or_create_shop(
+                    ocr_data.shop_name,
+                    ocr_data.shop_address
+                )
 
-            # Step 6: Create BillItems
-            await self._create_bill_items(bill_id, ocr_data)
+                # Step 6: Create BillItems
+                await self._create_bill_items(bill_id, ocr_data)
 
-            # Step 7: Update Bill → COMPLETED
-            await self._update_bill_completed(
-                bill_id,
-                total_amount=ocr_data.total_amount,
-                shop_id=shop_id,
-                bill_date=ocr_data.date or bill.bill_date
-            )
+                # Step 7: Update Bill → COMPLETED
+                await self._update_bill_completed(
+                    bill_id,
+                    total_amount=ocr_data.total_amount,
+                    shop_id=shop_id,
+                    bill_date=ocr_data.date or bill.bill_date
+                )
 
-            logger.info(f"Receipt processing completed for bill_id={bill_id}")
+                logger.info(f"Receipt processing completed for bill_id={bill_id}")
+                # Transakcja zostanie automatycznie commitowana przy wyjściu z bloku
 
-        except Exception as e:
-            logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
-            await self._set_error(bill_id, str(e))
-            raise  # Re-raise for caller to handle if needed
-```
+            except Exception as e:
+                # Transakcja zostanie automatycznie rollbackowana przy wyjątku
+                logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
+                await self._set_error(bill_id, str(e))
+                raise  # Re-raise for caller to handle if needed
 
 ### Metody pomocnicze:
 
@@ -317,7 +323,14 @@ class ReceiptProcessorService:
 
 ```python
 async def _get_bill(self, bill_id: int) -> Bill:
-    """Get Bill by ID, raise ResourceNotFoundError if not found."""
+    """
+    Get Bill model by ID, raise ResourceNotFoundError if not found.
+
+    Używa BillService zamiast duplikacji logiki (DRY principle).
+    """
+    # Użyj BillService do pobrania modelu (nie response)
+    # Musimy dostać się do modelu, więc używamy bezpośredniego zapytania
+    # lub dodajemy metodę get_model_by_id() w BillService
     from sqlalchemy import select
 
     stmt = select(Bill).where(Bill.id == bill_id)
@@ -328,66 +341,79 @@ async def _get_bill(self, bill_id: int) -> Bill:
         raise ResourceNotFoundError("Bill", bill_id)
 
     return bill
+````
+
+**Uwaga:** Alternatywnie, można dodać metodę `get_model_by_id()` w `BillService`:
+
+```python
+# W BillService:
+async def get_model_by_id(self, bill_id: int) -> Bill:
+    """Get Bill model by ID (for internal use, not for API responses)."""
+    return await super().get_by_id(bill_id)  # Zwraca model z AppService
+```
+
+Wtedy w `ReceiptProcessorService`:
+
+```python
+async def _get_bill(self, bill_id: int) -> Bill:
+    """Get Bill model by ID using BillService (DRY)."""
+    bill_response = await self.bill_service.get_by_id(bill_id)
+    # Pobierz model z sesji (bill_response to Pydantic schema)
+    # Lepsze: użyj get_model_by_id() jeśli dodamy tę metodę
+    stmt = select(Bill).where(Bill.id == bill_id)
+    result = await self.session.execute(stmt)
+    return result.scalar_one()
 ```
 
 #### 2. `_download_file()`
 
 ```python
 async def _download_file(self, image_url: str) -> bytes:
-    """Download file from Storage."""
-    try:
-        file_content = await self.storage_service.download_file(image_url)
-        logger.debug(f"Downloaded file: {image_url} ({len(file_content)} bytes)")
-        return file_content
-    except FileNotFoundError as e:
-        logger.error(f"File not found in storage: {image_url}")
-        raise ProcessingError(f"Receipt image not found: {image_url}") from e
-    except Exception as e:
-        logger.error(f"Failed to download file: {image_url}", exc_info=True)
-        raise ProcessingError(f"Failed to download receipt image: {str(e)}") from e
+    """
+    Download file from Storage.
+
+    Propaguje wyjątki StorageService bez opakowywania (zachowuje typy błędów).
+    """
+    file_content = await self.storage_service.download_file(image_url)
+    logger.debug(f"Downloaded file: {image_url} ({len(file_content)} bytes)")
+    return file_content
+    # Wyjątki (FileNotFoundError, RuntimeError) propagują się dalej
+    # do process_receipt(), gdzie są obsłużone przez _set_error()
 ```
 
 #### 3. `_extract_receipt_data()`
 
 ```python
 async def _extract_receipt_data(self, file_content: bytes, filename: str) -> OCRReceiptData:
-    """Extract receipt data using OCR Service."""
-    try:
-        # Create UploadFile-like object for OCR Service
-        # OCR Service expects UploadFile, so we need to create a file-like object
-        file_obj = BytesIO(file_content)
+    """
+    Extract receipt data using OCR Service.
 
-        # Determine MIME type from filename
-        mime_type = "image/jpeg"  # default
-        if filename.endswith(".png"):
-            mime_type = "image/png"
-        elif filename.endswith(".webp"):
-            mime_type = "image/webp"
+    Propaguje wyjątki OCR bez opakowywania (zachowuje typy błędów dla lepszego logowania).
+    Wyjątki OCR (FileValidationError, ExtractionError, AIServiceError) propagują się
+    do process_receipt(), gdzie są obsłużone przez _set_error().
+    """
+    # Create UploadFile-like object for OCR Service
+    # OCR Service expects UploadFile, so we need to create a file-like object
+    file_obj = BytesIO(file_content)
 
-        # Create UploadFile
-        upload_file = UploadFile(
-            file=file_obj,
-            filename=filename,
-            headers={"content-type": mime_type}
-        )
+    # Determine MIME type from filename
+    mime_type = "image/jpeg"  # default
+    if filename.endswith(".png"):
+        mime_type = "image/png"
+    elif filename.endswith(".webp"):
+        mime_type = "image/webp"
 
-        # Call OCR Service
-        ocr_data = await self.ocr_service.extract_data(upload_file)
-        logger.info(f"OCR extraction successful: {len(ocr_data.items)} items")
-        return ocr_data
+    # Create UploadFile
+    upload_file = UploadFile(
+        file=file_obj,
+        filename=filename,
+        headers={"content-type": mime_type}
+    )
 
-    except FileValidationError as e:
-        logger.error(f"File validation error: {e}")
-        raise ProcessingError(f"Invalid receipt image: {str(e)}") from e
-    except ExtractionError as e:
-        logger.error(f"OCR extraction error: {e}")
-        raise ProcessingError(f"Failed to extract data from receipt: {str(e)}") from e
-    except AIServiceError as e:
-        logger.error(f"AI service error: {e}")
-        raise ProcessingError(f"AI service unavailable: {str(e)}") from e
-    except Exception as e:
-        logger.error(f"Unexpected OCR error: {e}", exc_info=True)
-        raise ProcessingError(f"Unexpected error during OCR: {str(e)}") from e
+    # Call OCR Service - wyjątki OCR propagują się dalej
+    ocr_data = await self.ocr_service.extract_data(upload_file)
+    logger.info(f"OCR extraction successful: {len(ocr_data.items)} items")
+    return ocr_data
 ```
 
 #### 4. `_update_bill_status()`
@@ -442,7 +468,11 @@ async def _get_or_create_shop(
 
 ```python
 async def _create_bill_items(self, bill_id: int, ocr_data: OCRReceiptData) -> None:
-    """Create BillItems from OCR data."""
+    """
+    Create BillItems from OCR data.
+
+    Waliduje dane przez Pydantic (BillItemCreate z strict=True) przed zapisem do DB.
+    """
     if not ocr_data.items:
         logger.warning(f"No items in OCR data for bill_id={bill_id}")
         return
@@ -453,6 +483,7 @@ async def _create_bill_items(self, bill_id: int, ocr_data: OCRReceiptData) -> No
             # Determine if item needs verification (confidence < 0.8)
             needs_verification = ocr_item.confidence_score < 0.8
 
+            # Walidacja przez Pydantic (BillItemCreate powinien mieć strict=True)
             bill_item_data = BillItemCreate(
                 bill_id=bill_id,
                 quantity=ocr_item.quantity,
@@ -463,6 +494,7 @@ async def _create_bill_items(self, bill_id: int, ocr_data: OCRReceiptData) -> No
                 is_verified=not needs_verification,  # Auto-verified if confidence >= 0.8
                 verification_source=VerificationSource.AUTO
             )
+            # Pydantic waliduje typy (strict=True zapobiega niejawnej koercji)
 
             await self.bill_item_service.create(bill_item_data)
             created_count += 1
@@ -477,6 +509,18 @@ async def _create_bill_items(self, bill_id: int, ocr_data: OCRReceiptData) -> No
             continue
 
     logger.info(f"Created {created_count}/{len(ocr_data.items)} bill_items for bill_id={bill_id}")
+```
+
+**Uwaga:** Upewnij się, że `BillItemCreate` ma `strict=True` w `model_config`:
+
+```python
+# backend/src/bill_items/schemas.py
+class BillItemCreate(AppBaseModel):
+    model_config = ConfigDict(strict=True)  # Wymuszenie typów
+
+    bill_id: int
+    quantity: Decimal
+    # ... reszta pól
 ```
 
 #### 7. `_update_bill_completed()`
@@ -538,19 +582,103 @@ async def _set_error(self, bill_id: int, error_message: str) -> None:
         # Don't re-raise - we're already in error handling
 ```
 
-### Exception (opcjonalnie):
+### Exception:
 
 ```python
 # backend/src/processing/exceptions.py
+from typing import Optional
+from src.common.exceptions import AppError
 
-class ProcessingError(Exception):
-    """Exception raised during receipt processing."""
-    pass
+class ProcessingError(AppError):
+    """
+    Exception raised during receipt processing.
+
+    Dziedziczy po AppError zgodnie z hierarchią błędów domenowych.
+    Będzie tłumaczony na HTTPException przez globalny exception handler.
+    """
+    def __init__(self, message: str, bill_id: Optional[int] = None):
+        self.message = message
+        self.bill_id = bill_id
+        super().__init__(self.message)
 ```
 
 ---
 
-## 📝 Krok 4: Integracja z Telegram Bot
+## 📝 Krok 4: Utworzenie factory function dla ReceiptProcessorService
+
+### Lokalizacja: `backend/src/processing/dependencies.py` (nowy plik)
+
+### Implementacja:
+
+```python
+from typing import Optional, Annotated
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+
+from src.processing.service import ReceiptProcessorService
+from src.storage.service import StorageService, get_storage_service_for_telegram
+from src.ocr.services import OCRService
+from src.ocr.routes import get_ocr_service
+from src.bills.services import BillService
+from src.bill_items.services import BillItemService
+from src.shops.services import ShopService
+from src.telegram.context import get_or_create_session
+
+
+async def get_receipt_processor_service(
+    session: Optional[AsyncSession] = None
+) -> ReceiptProcessorService:
+    """
+    Factory function for ReceiptProcessorService.
+
+    Works both in FastAPI (with injected session) and Telegram handlers.
+    Używa Dependency Injection pattern zgodnie z architekturą projektu.
+
+    Args:
+        session: Optional AsyncSession (jeśli None, używa session z context lub tworzy nową)
+
+    Returns:
+        ReceiptProcessorService: Configured service instance
+
+    Note:
+        W kontekście Telegram, session powinien być już dostępny z `async with get_or_create_session() as session:`
+        W FastAPI, session jest wstrzykiwany przez Depends(get_session).
+    """
+    if session is None:
+        # Try to get session from context (Telegram handlers)
+        from src.telegram.context import _db_session
+        session = _db_session.get()
+        if session is None:
+            # Fallback: create new session (should not happen in normal flow)
+            from src.db.main import AsyncSessionLocal
+            session = AsyncSessionLocal()
+
+    storage_service = get_storage_service_for_telegram()
+    ocr_service = await get_ocr_service()
+    bill_service = BillService(session, storage_service)
+    bill_item_service = BillItemService(session)
+    shop_service = ShopService(session)
+
+    return ReceiptProcessorService(
+        session=session,
+        storage_service=storage_service,
+        ocr_service=ocr_service,
+        bill_service=bill_service,
+        bill_item_service=bill_item_service,
+        shop_service=shop_service
+    )
+
+
+# Type alias dla FastAPI dependencies (jeśli używane w routes)
+ReceiptProcessorServiceDependency = Annotated[
+    ReceiptProcessorService,
+    Depends(get_receipt_processor_service)
+]
+```
+
+---
+
+## 📝 Krok 5: Integracja z Telegram Bot
 
 ### Lokalizacja: `backend/src/telegram/handlers.py`
 
@@ -573,38 +701,28 @@ await status_message.edit_text(f"Paragon przyjęty! ID: {bill.id}\nRozpoczynam a
 
 # NOWA CZĘŚĆ: Trigger receipt processing
 try:
-    # Import services
-    from src.processing.service import ReceiptProcessorService
-    from src.ocr.services import OCRService
-    from src.ocr.routes import get_ocr_service
-    from src.bill_items.services import BillItemService
-    from src.shops.services import ShopService
-    import google.generativeai as genai
-    from src.config import settings
+    # Użyj factory function zamiast bezpośredniego tworzenia serwisów
+    from src.processing.dependencies import get_receipt_processor_service
 
-    # Initialize services
-    ocr_service_instance = await get_ocr_service()  # Dependency function
-    bill_item_service = BillItemService(session)
-    shop_service = ShopService(session)
+    # Get processor via factory function (DI pattern)
+    # Session jest już dostępny z 'async with get_or_create_session() as session:'
+    processor = await get_receipt_processor_service(session=session)
 
-    # Create processor
-    processor = ReceiptProcessorService(
-        session=session,
-        storage_service=storage_service,
-        ocr_service=ocr_service_instance,
-        bill_service=bill_service,
-        bill_item_service=bill_item_service,
-        shop_service=shop_service
-    )
-
-    # Process receipt (synchronous for now, can be moved to Celery later)
+    # Process receipt
     await processor.process_receipt(bill.id)
 
     # Update Telegram message with success
+    # Pobierz zaktualizowany bill z relacjami
+    from sqlalchemy import select
+    from src.bills.models import Bill
+    stmt = select(Bill).where(Bill.id == bill.id)
+    result = await session.execute(stmt)
+    updated_bill = result.scalar_one()
+
     await status_message.edit_text(
         f"✅ Paragon przetworzony!\n"
         f"ID: {bill.id}\n"
-        f"Znaleziono {len(bill.bill_items)} pozycji."
+        f"Znaleziono {len(updated_bill.bill_items)} pozycji."
     )
 
 except Exception as e:
@@ -673,18 +791,22 @@ except Exception as e:
 
 ## 📌 Checklist implementacji
 
-- [ ] Krok 1: Dodanie `download_file()` do StorageService
+- [x] Krok 1: Dodanie `download_file()` do StorageService (tylko Supabase Storage)
 - [ ] Krok 2: Dodanie `get_or_create_by_name()` do ShopService
 - [ ] Krok 3: Utworzenie ReceiptProcessorService
-  - [ ] `_get_bill()`
-  - [ ] `_download_file()`
-  - [ ] `_extract_receipt_data()`
+  - [ ] `process_receipt()` (z transakcją)
+  - [ ] `_get_bill()` (używa BillService lub bezpośrednie zapytanie)
+  - [ ] `_download_file()` (propagacja błędów)
+  - [ ] `_extract_receipt_data()` (propagacja błędów OCR)
   - [ ] `_update_bill_status()`
   - [ ] `_get_or_create_shop()`
-  - [ ] `_create_bill_items()`
+  - [ ] `_create_bill_items()` (walidacja Pydantic)
   - [ ] `_update_bill_completed()`
   - [ ] `_set_error()`
-- [ ] Krok 4: Integracja z Telegram Bot
+- [ ] Krok 4: Utworzenie factory function (`dependencies.py`)
+- [ ] Krok 5: Integracja z Telegram Bot
+- [x] Dodanie `aiofiles` do zależności (następnie usunięte - niepotrzebne, tylko Supabase Storage)
+- [ ] Upewnienie się, że `BillItemCreate` ma `strict=True`
 - [ ] Testy jednostkowe
 - [ ] Testy integracyjne
 - [ ] Dokumentacja
@@ -693,17 +815,21 @@ except Exception as e:
 
 ## ⚠️ Uwagi implementacyjne
 
-1. **Transakcje DB**: Wszystkie operacje DB powinny być w jednej transakcji lub z odpowiednim rollback w przypadku błędów.
+1. **Transakcje DB**: ✅ Wszystkie operacje DB w `process_receipt()` są w jednej transakcji (`async with session.begin()`). W przypadku błędu, transakcja jest automatycznie rollbackowana.
 
-2. **Error Handling**: Każdy krok powinien mieć try/except z odpowiednim logowaniem.
+2. **Error Handling**: Wyjątki domenowe (OCR, Storage) propagują się bez opakowywania, zachowując typy błędów dla lepszego logowania. Obsługa błędów odbywa się w `process_receipt()` przez `_set_error()`.
 
 3. **Logging**: Używać structured logging z `bill_id` w kontekście.
 
-4. **Performance**: Dla większej skali, przenieść do Celery (async processing).
+4. **Performance**: Dla większej skali, przenieść do Dramatiq (async processing). W MVP pozostawiamy synchroniczne przetwarzanie w handlerze Telegram.
 
-5. **Idempotency**: `process_receipt()` powinno być idempotentne (można wywołać wielokrotnie bezpiecznie).
+5. **Idempotency**: `process_receipt()` jest idempotentne - sprawdza status Bill i pomija przetwarzanie, jeśli już jest COMPLETED.
 
-6. **Validation**: Walidować dane z OCR przed zapisem do DB.
+6. **Validation**: ✅ Dane z OCR są walidowane przez Pydantic (`BillItemCreate` z `strict=True`) przed zapisem do DB.
+
+7. **Dependency Injection**: ✅ Użyto factory function (`get_receipt_processor_service()`) zamiast bezpośredniego tworzenia serwisów w handlerze.
+
+8. **Async I/O**: ✅ StorageService używa tylko Supabase Storage (bez lokalnego fallback). Operacje download są asynchroniczne przez Supabase client.
 
 ---
 

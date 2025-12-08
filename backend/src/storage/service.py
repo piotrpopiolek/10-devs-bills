@@ -119,6 +119,32 @@ class StorageService:
     
     def calculate_expiration_date(self, months: int = 6) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=months * 30)
+    
+    async def download_file(self, file_path: str) -> bytes:
+        """
+        Download file from Supabase Storage.
+
+        Args:
+            file_path: Storage path (e.g., "bills/2/abc123.jpg")
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            RuntimeError: If storage client is not initialized
+        """
+        if not self.supabase_client:
+            raise RuntimeError("Supabase client not initialized")
+
+        try:
+            bucket_name = settings.SUPABASE_STORAGE_BUCKET
+            file_data = self.supabase_client.storage.from_(bucket_name).download(file_path)
+            logger.info(f"File downloaded from Supabase: {file_path}")
+            return file_data
+        except Exception as e:
+            logger.error(f"Failed to download from Supabase: {e}", exc_info=True)
+            raise FileNotFoundError(f"File not found in storage: {file_path}") from e
 
 
 # FastAPI Dependency Injection for StorageService
