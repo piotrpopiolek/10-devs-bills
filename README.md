@@ -37,21 +37,26 @@ For full product details, see the PRD:
 - Backend:
   - Python 3.11+, FastAPI, Uvicorn
   - SQLAlchemy (ORM), Alembic (migrations), Pydantic (validation)
-  - SQLAdmin (admin panel)
   - python-telegram-bot (Telegram integration)
   - sentry-sdk (logging/monitoring)
+  - Supabase (PostgreSQL database, Storage, Auth)
 - Data & AI:
-  - PaddlePaddle-OCR (OCR)
+  - **OCR (MVP):** Google Gemini API (Gemini 1.5 Flash) - LLM-based extraction
+  - **OCR (Post-MVP):** PaddlePaddle-OCR (planned for future improvements)
   - OpenAI API (categorization & normalization)
-  - Celery (task queue), RabbitMQ (broker)
+  - Celery (task queue, planned), RabbitMQ (broker, planned)
 - Frontend:
-  - React.js, Tailwind CSS
+  - Astro 5 (static site generation, routing)
+  - React 19 (interactive components - Islands Architecture)
+  - Tailwind CSS 4 (styling)
+  - Shadcn/ui (UI component library)
+  - TypeScript 5
 - Database & Hosting:
-  - PostgreSQL
+  - Supabase (PostgreSQL, Storage, Authentication)
 - Infrastructure:
-  - Nginx (reverse proxy)
+  - Nginx (reverse proxy, optional)
 - Testing:
-  - Backend: pytest, pytest-asyncio, pytest-mock
+  - Backend: pytest, pytest-asyncio, pytest-mock, pytest-cov
   - Frontend: Vitest (unit tests), Playwright (E2E tests)
   - Mocking: unittest.mock (Python)
 
@@ -65,60 +70,95 @@ See also: `.ai/tech-stack.md`
 
 - Python 3.11+
 - Node.js 18+ and npm or pnpm
-- PostgreSQL 14+ (local or remote)
-- RabbitMQ 3.12+ (local)
+- Supabase account (or local PostgreSQL 14+)
 - OpenAI API key
-- PaddleOCR system dependencies (per your OS)
+- Google Gemini API key (for OCR)
+- Optional: RabbitMQ 3.12+ (for Celery, if using task queue)
 - Optional: Sentry DSN (for error tracking)
 
 ### Environment variables
 
-Create a `.env` file (or export as environment variables) for the backend:
+Create a `.env` file in the `backend/` directory (or export as environment variables):
 
-Application
-APP_ENV=development
-APP_PORT=8000
-Database
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/bills
-Telegram
+```bash
+# Application
+ENV=development
+PORT=8000
+
+# Database (Supabase PostgreSQL)
+DATABASE_URL=postgresql+psycopg2://postgres:password@db.xxxxx.supabase.co:5432/postgres
+
+# Supabase (for Storage and Auth)
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+SUPABASE_STORAGE_BUCKET=bills
+
+# Telegram
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-TELEGRAM_WEBHOOK_URL=https://your-dev-tunnel-or-domain/telegram/webhook
-OpenAI
+TELEGRAM_WEBHOOK_URL=https://your-dev-tunnel-or-domain/api/v1/webhooks/telegram
+TELEGRAM_WEBHOOK_SECRET=your-webhook-secret-token
+
+# AI Services
 OPENAI_API_KEY=your-openai-api-key
-Celery / RabbitMQ
+OPENAI_MODEL=gpt-4o
+GEMINI_API_KEY=your-google-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
+
+# JWT Authentication
+JWT_SECRET_KEY=your-secret-key-here
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+MAGIC_LINK_EXPIRE_MINUTES=30
+
+# Frontend
+WEB_APP_URL=http://localhost:4321
+
+# Freemium Limits
+MONTHLY_BILLS_LIMIT=100
+
+# Celery / RabbitMQ (optional, for future async tasks)
 CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
 CELERY_RESULT_BACKEND=rpc://
-Sentry (optional)
+
+# Sentry (optional)
 SENTRY_DSN=
+```
 
 ### Backend (FastAPI)
 
 ```bash
-# 1) Create and activate virtual environment
+# 1) Navigate to backend directory
+cd backend
+
+# 2) Create and activate virtual environment
 python -m venv .venv
 # Windows PowerShell:
 . .\.venv\Scripts\Activate.ps1
 # macOS/Linux:
 # source .venv/bin/activate
 
-# 2) Install dependencies
+# 3) Install dependencies
 pip install -r requirements.txt
 
-# 3) Run database migrations (if Alembic is configured)
-# alembic upgrade head
+# 4) Run database migrations (Alembic)
+alembic upgrade head
 
-# 4) Start the API server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 5) Start the API server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Task queue (Celery)
+### Task queue (Celery) - Optional
+
+> **Note:** Celery is configured but not yet fully implemented. This section is for future use.
 
 ```bash
 # Start RabbitMQ (Docker example)
 docker run --rm -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 
-# Start Celery worker (adjust app path)
-celery -A app.worker.celery_app worker --loglevel=INFO
+# Start Celery worker (when implemented)
+# celery -A src.worker.celery_app worker --loglevel=INFO
 ```
 
 ### Telegram bot
@@ -129,15 +169,23 @@ celery -A app.worker.celery_app worker --loglevel=INFO
   - Expose a public URL for webhooks (e.g., ngrok) and set `TELEGRAM_WEBHOOK_URL`.
 - Commands supported by MVP (as per PRD): `/start`, `/dzis`, `/tydzien`, `/miesiac`, `/login`, `/prywatnosc`.
 
-### Frontend (React + Tailwind)
+### Frontend (Astro + React + Tailwind)
 
 ```bash
-# From frontend directory if present
+# 1) Navigate to astro directory
+cd astro
+
+# 2) Install dependencies
 npm install
-npm run dev
 # or with pnpm
 # pnpm install
+
+# 3) Start development server
+npm run dev
+# or with pnpm
 # pnpm dev
+
+# The frontend will be available at http://localhost:4321
 ```
 
 ### Reverse proxy (optional)
@@ -145,40 +193,45 @@ npm run dev
 If you need a unified entrypoint, configure Nginx to proxy to:
 
 - FastAPI at `http://localhost:8000`
-- Frontend dev server at its port (e.g., `http://localhost:5173`)
-- Telegram webhook endpoint mapped to your public URL
+- Frontend dev server (Astro) at `http://localhost:4321`
+- Telegram webhook endpoint mapped to your public URL (`/api/v1/webhooks/telegram`)
 
 ## Available scripts
 
 > Adjust to your project structure. If no package/Makefile exists yet, these examples can be added.
 
-- Backend
+- Backend (from `backend/` directory)
 
-  - Start API (dev): `uvicorn app.main:app --reload --port 8000`
+  - Start API (dev): `uvicorn main:app --reload --port 8000`
   - Run migrations: `alembic upgrade head`
   - Generate migration: `alembic revision --autogenerate -m "message"`
   - Lint (example): `ruff check .` or `flake8`
   - Tests: `pytest -q`
-  - Tests with coverage: `pytest --cov=. --cov-report=html`
+  - Tests with coverage: `pytest --cov=src --cov-report=html`
 
-- Celery
+- Celery (optional, when implemented)
 
-  - Worker: `celery -A app.worker.celery_app worker --loglevel=INFO`
-  - Beat (if scheduled tasks): `celery -A app.worker.celery_app beat`
+  - Worker: `celery -A src.worker.celery_app worker --loglevel=INFO`
+  - Beat (if scheduled tasks): `celery -A src.worker.celery_app beat`
 
-- Frontend
+- Frontend (from `astro/` directory)
   - Dev: `npm run dev`
   - Build: `npm run build`
   - Preview: `npm run preview`
   - Unit tests: `npm run test` (Vitest)
+  - Test UI: `npm run test:ui` (Vitest UI)
+  - Test watch: `npm run test:watch`
+  - Test coverage: `npm run test:coverage`
   - E2E tests: `npm run test:e2e` (Playwright)
+  - E2E UI: `npm run test:e2e:ui`
+  - E2E debug: `npm run test:e2e:debug`
 
 ## Project scope
 
 In scope (MVP):
 
 - Telegram bot to accept receipt photos and simple text commands.
-- OCR extraction of line items.
+- OCR extraction of line items (using Gemini API for MVP).
 - AI-based normalization and categorization into predefined categories; low-confidence items go through user confirmation.
 - Receipt total validation versus sum of items.
 - Text summaries in the bot: daily, weekly, monthly.
@@ -204,53 +257,53 @@ Out of scope (MVP):
 ### Backend Tests (pytest)
 
 ```bash
-# Z katalogu backend/
+# From backend/ directory
 cd backend
 
-# Wszystkie testy
+# Run all tests
 pytest
 
-# Testy z pokryciem
+# Tests with coverage
 pytest --cov=src --cov-report=html
 
-# Konkretny plik
+# Specific test file
 pytest tests/example_test.py
 
-# Testy z markerem
+# Tests with markers
 pytest -m unit
 pytest -m integration
 ```
 
-Więcej informacji: `backend/tests/README.md`
+More information: `backend/tests/README.md`
 
 ### Frontend Tests
 
-#### Testy jednostkowe (Vitest)
+#### Unit Tests (Vitest)
 
 ```bash
-# Z katalogu astro/
+# From astro/ directory
 cd astro
 
-# Wszystkie testy
+# Run all tests
 npm run test
 
-# Tryb watch
+# Watch mode
 npm run test:watch
 
 # UI mode
 npm run test:ui
 
-# Z pokryciem
+# With coverage
 npm run test:coverage
 ```
 
-#### Testy E2E (Playwright)
+#### E2E Tests (Playwright)
 
 ```bash
 # Z katalogu astro/
 cd astro
 
-# Wszystkie testy E2E
+# Run all E2E tests
 npm run test:e2e
 
 # UI mode
@@ -260,21 +313,27 @@ npm run test:e2e:ui
 npm run test:e2e:debug
 ```
 
-Więcej informacji: `astro/src/test/README.md`
+More information: `astro/src/test/README.md`
 
 ## Project status
 
-MVP in progress. Initial focus:
+MVP in progress (~50% complete). Current focus:
 
-- Bot receipt processing and OCR + AI categorization pipeline
-- User verification for low-confidence items
-- Magic link authentication for read-only web app
-- Summaries parity between bot and web app
+- ✅ OCR Service (LLM-based with Gemini API) - **Completed**
+- ✅ Telegram Bot - receipt image upload and Bill creation - **Completed**
+- ✅ User isolation and rate limiting - **Completed**
+- ✅ Storage Service (Supabase) - **Completed**
+- 🔴 Receipt Processing Pipeline (OCR → AI → Database) - **In Progress**
+- 🟡 AI Categorization Service (normalization, Product Index mapping) - **Partial**
+- 🟡 Reports module (daily/weekly/monthly summaries) - **Planned**
+- 🟡 Telegram Bot integration with OCR - **Planned**
 
 Success metrics:
 
 - 90% of items correctly processed automatically (OCR, normalization, categorization)
 - <10% of items require manual verification
+
+For detailed progress, see: `PLAN_AKTUALIZACJA.md`
 
 ## License
 
