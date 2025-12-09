@@ -10,15 +10,10 @@ from src.auth.services import AuthService
 from src.bills.models import Bill, ProcessingStatus
 from src.bills.schemas import BillCreate
 from src.bills.services import BillService
-from src.common.exceptions import (
-    ResourceAlreadyExistsError,
-    UserCreationError,
-    ResourceNotFoundError
-)
+from src.common.exceptions import ResourceNotFoundError
 from src.processing.dependencies import get_bills_processor_service
-from src.telegram.context import get_or_create_session, get_storage_service_for_telegram
+from src.telegram.context import get_or_create_session, get_storage_service_for_telegram, get_user
 from src.telegram.error_mapping import get_user_message
-from src.users.services import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -46,24 +41,15 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user:
         return
         
-    telegram_id = update.effective_user.id
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
     
     async with get_or_create_session() as session:
         auth_service = AuthService(session)
         
-        # Get or create user (eliminates code duplication)
-        try:
-            user = await auth_service.get_or_create_user_by_telegram_id(telegram_id)
-            logger.info(f"User for Telegram ID {telegram_id}: {user.id} (existing or newly created)")
-        except (ResourceAlreadyExistsError, UserCreationError) as e:
-            logger.error(f"Error getting/creating user: {e}", exc_info=True)
-            await update.message.reply_text(get_user_message(e))
-            return
-        except Exception as e:
-            logger.error(f"Unexpected error getting/creating user: {e}", exc_info=True)
-            await update.message.reply_text(get_user_message(e))
-            return
-
         # Generate magic link
         try:
             magic_link, url = await auth_service.create_magic_link_for_user(user.id)
@@ -99,7 +85,11 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
     if not update.message or not update.effective_user:
         return
         
-    telegram_id = update.effective_user.id
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
     
     # Notify user we are processing
     status_message = await update.message.reply_text("Przetwarzam zdjęcie...")
@@ -109,21 +99,11 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         # StorageService is obtained via DI pattern (ContextVar with fallback)
         # This allows for proper testability and lifecycle management.
         storage_service = get_storage_service_for_telegram()
-        auth_service = AuthService(session)
+        # auth_service = AuthService(session) # Not needed as user is already here
         bill_service = BillService(session, storage_service)
         
-        # 1. Get or create user (eliminates code duplication)
-        try:
-            user = await auth_service.get_or_create_user_by_telegram_id(telegram_id)
-            logger.info(f"User for Telegram ID {telegram_id}: {user.id} (existing or newly created)")
-        except (ResourceAlreadyExistsError, UserCreationError) as e:
-            logger.error(f"Error getting/creating user: {e}", exc_info=True)
-            await status_message.edit_text(get_user_message(e))
-            return
-        except Exception as e:
-            logger.error(f"Unexpected error getting/creating user: {e}", exc_info=True)
-            await status_message.edit_text(get_user_message(e))
-            return
+        # User is already retrieved from context (middleware)
+        logger.info(f"User for Telegram ID {update.effective_user.id}: {user.id}")
 
         # TODO: Check user receipt limit (Freemium Model F-09)
         # if user.receipts_count >= 100: ...

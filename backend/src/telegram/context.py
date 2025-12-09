@@ -1,10 +1,13 @@
 import logging
 from contextvars import ContextVar
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.main import AsyncSessionLocal
 from src.storage.service import StorageService
+
+if TYPE_CHECKING:
+    from src.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +16,9 @@ _db_session: ContextVar[Optional[AsyncSession]] = ContextVar("db_session", defau
 
 # Context variable to store storage service per-request
 _storage_service: ContextVar[Optional[StorageService]] = ContextVar("storage_service", default=None)
+
+# Context variable to store current authenticated user per-request
+_user: ContextVar[Optional['User']] = ContextVar("user", default=None)
 
 
 class SessionContextManager:
@@ -40,6 +46,11 @@ def set_db_session(session: AsyncSession):
     _db_session.set(session)
 
 
+def get_db_session() -> Optional[AsyncSession]:
+    """Get the current database session from context."""
+    return _db_session.get()
+
+
 def clear_db_session():
     """Clear the database session from the current context."""
     _db_session.set(None)
@@ -53,6 +64,18 @@ def set_storage_service(service: StorageService):
 def clear_storage_service():
     """Clear the storage service from the current context."""
     _storage_service.set(None)
+
+def set_user(user: 'User'):
+    """Set the current user for the context."""
+    _user.set(user)
+
+def get_user() -> Optional['User']:
+    """Get the current user from context."""
+    return _user.get()
+
+def clear_user():
+    """Clear the current user from context."""
+    _user.set(None)
 
 
 def get_or_create_session():
@@ -100,4 +123,3 @@ def get_storage_service_for_telegram() -> StorageService:
         # Fallback: create new instance (for Telegram handlers or tests)
         logger.debug("No storage service in context, creating new instance.")
         return StorageService()
-

@@ -4,11 +4,13 @@ from typing import Optional
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, TypeHandler, filters
 
 from src.config import settings
 from src.telegram import handlers
-from src.telegram.context import set_db_session, clear_db_session
+from src.telegram.bot import LoggingBot
+from src.telegram.middleware import logging_middleware
+from src.telegram.context import set_db_session, clear_db_session, clear_user
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,14 @@ class TelegramBotService:
         Get or create the singleton Telegram Application instance.
         """
         if cls._application is None:
+            # Initialize custom bot with logging capabilities
+            bot = LoggingBot(token=settings.TELEGRAM_BOT_TOKEN)
+            
             # .updater(None) is crucial here because we are using webhooks via FastAPI
             # and don't want python-telegram-bot to initialize its own Updater
-            cls._application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).updater(None).build()
+            # We pass our custom bot instance
+            cls._application = Application.builder().bot(bot).updater(None).build()
+            
             await cls._register_handlers(cls._application)
             await cls._application.initialize()
             await cls._application.start()
@@ -48,6 +55,9 @@ class TelegramBotService:
         """
         Register command and message handlers from the handlers module.
         """
+        # Register middleware (group -1 ensures it runs before others)
+        app.add_handler(TypeHandler(Update, logging_middleware), group=-1)
+
         app.add_handler(CommandHandler("start", handlers.start_command))
         app.add_handler(CommandHandler("login", handlers.login_command))
         app.add_handler(CommandHandler("dzis", handlers.daily_report_command))
@@ -77,6 +87,8 @@ class TelegramBotService:
         """
         # Set session in context variable so handlers can access it
         set_db_session(session)
+        # Clear any previous user context to be safe
+        clear_user()
         
         try:
             # Validate secret token if configured
@@ -95,3 +107,4 @@ class TelegramBotService:
         finally:
             # Clear context variable after request to prevent leaks
             clear_db_session()
+            clear_user()

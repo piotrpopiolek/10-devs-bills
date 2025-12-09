@@ -2,9 +2,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from telegram import Update, Message
+from telegram.constants import MessageType
 
 from src.common.services import AppService
-from src.telegram_messages.models import TelegramMessage
+from src.telegram_messages.models import TelegramMessage, TelegramMessageType, TelegramMessageStatus
 from src.telegram_messages.schemas import TelegramMessageCreate, TelegramMessageUpdate
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
 from src.users.models import User
@@ -119,3 +121,106 @@ class TelegramMessageService(AppService[TelegramMessage, TelegramMessageCreate, 
         except IntegrityError as e:
             await self.session.rollback()
             raise e
+
+
+class TelegramLoggingService:
+    """
+    Service for logging incoming and outgoing Telegram messages.
+    Uses TelegramMessageService for persistence.
+    """
+    def __init__(self, message_service: TelegramMessageService):
+        self.message_service = message_service
+
+    def _determine_message_type(self, message: Message) -> TelegramMessageType:
+        if message.text:
+            return TelegramMessageType.TEXT
+        elif message.photo:
+            return TelegramMessageType.PHOTO
+        elif message.document:
+            return TelegramMessageType.DOCUMENT
+        elif message.voice:
+            return TelegramMessageType.VOICE
+        elif message.video:
+            return TelegramMessageType.VIDEO
+        elif message.audio:
+            return TelegramMessageType.AUDIO
+        elif message.sticker:
+            return TelegramMessageType.STICKER
+        return TelegramMessageType.TEXT  # Fallback
+
+    def _get_content_and_file_id(self, message: Message, msg_type: TelegramMessageType) -> tuple[str, Optional[str]]:
+        content = message.text or message.caption or ""
+        file_id = None
+        
+        if msg_type == TelegramMessageType.PHOTO:
+            # Get largest photo
+            file_id = message.photo[-1].file_id if message.photo else None
+            if not content:
+                content = "[Photo]"
+        elif msg_type == TelegramMessageType.DOCUMENT:
+            file_id = message.document.file_id
+            if not content:
+                content = f"[Document] {message.document.file_name or ''}"
+        elif msg_type == TelegramMessageType.VOICE:
+            file_id = message.voice.file_id
+            if not content:
+                content = "[Voice]"
+        elif msg_type == TelegramMessageType.VIDEO:
+            file_id = message.video.file_id
+            if not content:
+                content = "[Video]"
+        elif msg_type == TelegramMessageType.AUDIO:
+            file_id = message.audio.file_id
+            if not content:
+                content = f"[Audio] {message.audio.title or ''}"
+        elif msg_type == TelegramMessageType.STICKER:
+            file_id = message.sticker.file_id
+            if not content:
+                content = f"[Sticker] {message.sticker.emoji or ''}"
+        
+        return content, file_id
+
+    async def log_incoming_message(self, update: Update, user: User) -> Optional[TelegramMessage]:
+        """
+        Log an incoming message from a user.
+        """
+        if not update.message:
+            return None
+            
+        message = update.message
+        msg_type = self._determine_message_type(message)
+        content, file_id = self._get_content_and_file_id(message, msg_type)
+        
+        try:
+            return await self.message_service.create(TelegramMessageCreate(
+                telegram_message_id=message.message_id,
+                chat_id=message.chat_id,
+                message_type=msg_type,
+                content=content,
+                status=TelegramMessageStatus.DELIVERED, # Incoming is considered delivered to us
+                file_id=file_id,
+                user_id=user.id
+            ))
+        except ResourceAlreadyExistsError:
+            # Message already logged (idempotency)
+            return None
+
+    async def log_outgoing_message(self, message: Message, user_id: int) -> Optional[TelegramMessage]:
+        """
+        Log an outgoing message from the bot.
+        """
+        msg_type = self._determine_message_type(message)
+        content, file_id = self._get_content_and_file_id(message, msg_type)
+        
+        try:
+            return await self.message_service.create(TelegramMessageCreate(
+                telegram_message_id=message.message_id,
+                chat_id=message.chat_id,
+                message_type=msg_type,
+                content=content,
+                status=TelegramMessageStatus.SENT,
+                file_id=file_id,
+                user_id=user_id
+            ))
+        except ResourceAlreadyExistsError:
+            return None
