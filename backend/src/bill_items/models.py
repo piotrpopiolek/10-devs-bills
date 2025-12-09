@@ -62,7 +62,7 @@ class BillItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     total_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), comment='Manual verification status')
-    verification_source: Mapped[VerificationSource] = mapped_column(SAEnum(VerificationSource, name='verification_source', create_type=True),nullable=False,default=VerificationSource.AUTO,server_default=VerificationSource.AUTO.value)
+    verification_source: Mapped[VerificationSource] = mapped_column(SAEnum(VerificationSource, name='verification_source', create_type=True, values_callable=lambda x: [e.value for e in x]),nullable=False,default=VerificationSource.AUTO,server_default=VerificationSource.AUTO.value)
     bill_id: Mapped[int] = mapped_column(Integer, ForeignKey('bills.id', ondelete='CASCADE'), nullable=False)
     index_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('product_indexes.id', ondelete='SET NULL'), nullable=True)
     original_text: Mapped[Optional[str]] = mapped_column(Text)

@@ -13,7 +13,7 @@ class AppBaseModel(BaseModel):
         str_strip_whitespace=True,  # Auto-strip whitespace from strings
         validate_assignment=True,   # Validate values even when setting attributes after creation
         from_attributes=True,       # Enable ORM mode (SQLAlchemy -> Pydantic)
-        frozen=False                # Allow mutation (default)
+        frozen=False               # Allow mutation (default)
     )
 
 class PaginatedResponse(AppBaseModel, Generic[T]):
