@@ -1,9 +1,12 @@
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List
 from pydantic import Field, ConfigDict, model_validator
 
 from src.common.schemas import AppBaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class OCRItem(AppBaseModel):
@@ -24,20 +27,62 @@ class OCRReceiptData(AppBaseModel):
     total_amount: Decimal = Field(..., description="Łączna kwota paragonu")
     items: List[OCRItem] = Field(default_factory=list, description="Lista pozycji")
     currency: str = Field(default="PLN", max_length=3, description="Waluta")
+    requires_verification: bool = Field(default=False, description="Flaga wymaga weryfikacji")
 
     @model_validator(mode='after')
     def validate_total_amount(self) -> 'OCRReceiptData':
-        """Waliduje, czy suma pozycji jest zbliżona do total_amount (±10% tolerancja)"""
+        """
+        Dwupoziomowa walidacja sumy pozycji vs total_amount.
+        
+        Tolerancje:
+        - > 5% różnicy: ustawia flagę requires_verification (TO_VERIFY status)
+        - > 20% różnicy: rzuca błąd (prawdopodobnie poważny błąd OCR - ERROR status)
+        
+        Przyczyny rozbieżności < 20%:
+        - Opakowania zwrotne / depozyty
+        - Rabaty nie przypisane do pozycji  
+        - Nieczytelna cena jednostkowa lub ilość pojedynczych pozycji
+        - Błędy zaokrągleń
+        
+        Returns:
+            OCRReceiptData with requires_verification flag set if needed
+            
+        Raises:
+            ValueError: If difference > 20% (critical OCR error)
+        """
         if not self.items:
             return self
 
         items_sum = sum(item.total_price for item in self.items)
-        tolerance = self.total_amount * Decimal("0.1")  # 10% tolerancja
+        difference = abs(items_sum - self.total_amount)
+        
+        # Avoid division by zero
+        if self.total_amount == 0:
+            if difference > 0:
+                raise ValueError("Total amount is 0, but items sum is not zero")
+            return self
+        
+        # Calculate percentage difference
+        percentage_diff = (difference / self.total_amount) * Decimal("100")
 
-        if abs(items_sum - self.total_amount) > tolerance:
+        # Level 1: Critical error (> 20%) - reject completely
+        if percentage_diff > Decimal("20.0"):
             raise ValueError(
-                f"Suma pozycji ({items_sum}) nie zgadza się z total_amount ({self.total_amount}). "
-                f"Różnica: {abs(items_sum - self.total_amount)}"
+                f"Krytyczna rozbieżność w sumie! "
+                f"Suma pozycji: {items_sum} PLN, "
+                f"Total amount: {self.total_amount} PLN, "
+                f"Różnica: {difference} PLN ({percentage_diff:.1f}%). "
+                f"Prawdopodobnie poważny błąd OCR - paragon zostanie odrzucony."
+            )
+        
+        # Level 2: Minor mismatch (5-20%) - flag for verification
+        if percentage_diff > Decimal("5.0"):
+            self.requires_verification = True
+            logger.warning(
+                f"Total amount mismatch detected (requires verification). "
+                f"Items sum: {items_sum} PLN, "
+                f"Total amount: {self.total_amount} PLN, "
+                f"Difference: {difference} PLN ({percentage_diff:.1f}%)"
             )
 
         return self

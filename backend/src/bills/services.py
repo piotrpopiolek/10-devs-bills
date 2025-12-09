@@ -9,6 +9,8 @@ from src.common.exceptions import ResourceNotFoundError, BillAccessDeniedError
 from src.users.models import User
 from src.shops.models import Shop
 from src.storage.service import StorageService
+from src.bill_items.models import BillItem
+from decimal import Decimal
 
 
 class BillService(AppService[Bill, BillCreate, BillUpdate]):
@@ -237,3 +239,14 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         except IntegrityError as e:
             await self.session.rollback()
             raise e
+
+    async def get_items_sum(self, bill_id: int) -> Decimal:
+        """
+        Calculate sum of all bill_items for given bill.
+        Returns 0 if no items.
+        """
+        stmt = select(func.sum(BillItem.total_price)).where(BillItem.bill_id == bill_id)
+        result = await self.session.execute(stmt)
+        items_sum = result.scalar_one_or_none()
+        
+        return items_sum or Decimal("0.00")

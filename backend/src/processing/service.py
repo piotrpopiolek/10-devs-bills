@@ -61,18 +61,11 @@ class BillsProcessorService:
 
     async def process_receipt(self, bill_id: int) -> None:
         """
-        Main method processing receipt from PENDING to COMPLETED/ERROR.
-
-        IMPORTANT:
-        Operations are NOT atomic in terms of database transaction because underlying
-        services (BillService, BillItemService) perform their own commits.
-        We rely on optimistic concurrency and explicit error handling state updates.
+        Main method processing receipt from PENDING to COMPLETED/TO_VERIFY/ERROR.
         
-        Args:
-            bill_id: ID of the Bill to process
-
-        Raises:
-            ResourceNotFoundError: If bill doesn't exist (propagated from BillService)
+        New flow:
+        PENDING → PROCESSING → [TO_VERIFY] → COMPLETED
+                         ↘ ERROR
         """
         logger.info(f"Starting receipt processing for bill_id={bill_id}")
 
@@ -111,15 +104,29 @@ class BillsProcessorService:
             # Step 6: Create BillItems
             await self._create_bill_items(bill_id, ocr_data)
 
-            # Step 7: Update Bill → COMPLETED
+            # Step 7: Determine final status based on validation
+            final_status = (
+                ProcessingStatus.TO_VERIFY 
+                if ocr_data.requires_verification 
+                else ProcessingStatus.COMPLETED
+            )
+
+            # Step 8: Update Bill with final data
             await self._update_bill_completed(
                 bill_id,
                 total_amount=ocr_data.total_amount,
                 shop_id=shop_id,
-                bill_date=ocr_data.date or bill.bill_date
+                bill_date=ocr_data.date or bill.bill_date,
+                status=final_status
             )
 
-            logger.info(f"Receipt processing completed for bill_id={bill_id}")
+            logger.info(
+                f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
+                extra={
+                    "status": final_status.value,
+                    "requires_verification": ocr_data.requires_verification
+                }
+            )
 
         except Exception as e:
             logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
@@ -279,13 +286,14 @@ class BillsProcessorService:
         bill_id: int,
         total_amount: Decimal,
         shop_id: Optional[int],
-        bill_date: datetime
+        bill_date: datetime,
+        status: ProcessingStatus = ProcessingStatus.COMPLETED  # ← Now accepts TO_VERIFY too
     ) -> None:
-        """Update Bill with final data and set status to COMPLETED."""
+        """Update Bill with final data and set status to COMPLETED or TO_VERIFY."""
         bill = await self._get_bill(bill_id)
 
         update_data = BillUpdate(
-            status=ProcessingStatus.COMPLETED,
+            status=status,
             total_amount=total_amount,
             shop_id=shop_id,
             bill_date=bill_date
@@ -293,9 +301,9 @@ class BillsProcessorService:
 
         try:
             await self.bill_service.update(bill_id, update_data, bill.user_id)
-            logger.info(f"Bill {bill_id} marked as COMPLETED")
+            logger.info(f"Bill {bill_id} marked as {status.value}")
         except Exception as e:
-            logger.error(f"Failed to update bill as completed: {e}", exc_info=True)
+            logger.error(f"Failed to update bill as {status.value}: {e}", exc_info=True)
             raise ProcessingError(f"Failed to finalize bill: {str(e)}") from e
 
     async def _set_error(self, bill_id: int, error_message: str) -> None:

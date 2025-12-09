@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 class ProcessingStatus(str, enum.Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    TO_VERIFY = "to_verify"
     COMPLETED = "completed"
     ERROR = "error"
 
