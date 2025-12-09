@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -6,6 +7,8 @@ from src.common.services import AppService
 from src.shops.models import Shop
 from src.shops.schemas import ShopCreate, ShopUpdate
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
+
+logger = logging.getLogger(__name__)
 
 
 class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
@@ -44,11 +47,20 @@ class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
 
         return shop
 
-    async def _ensure_unique_shop(self, name: str, address: Optional[str], exclude_id: Optional[int] = None) -> None:
+    async def _find_by_name_and_address(self, name: str, address: Optional[str], exclude_id: Optional[int] = None) -> Optional[Shop]:
         """
-        Checks if a combination of name and address already exists.
-        Used to prevent duplicate shops with the same name and address.
-        Note: This is case-sensitive (not using LOWER) as per database constraint.
+        Find shop by name and address.
+
+        Args:
+            name: Shop name
+            address: Shop address (optional)
+            exclude_id: Optional shop ID to exclude from search
+
+        Returns:
+            Shop instance if found, None otherwise
+
+        Note:
+            This is case-sensitive (not using LOWER) as per database constraint.
         """
         stmt = select(Shop).where(
             Shop.name == name,
@@ -59,6 +71,58 @@ class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
             stmt = stmt.where(Shop.id != exclude_id)
         
         result = await self.session.execute(stmt)
-        if result.scalars().first():
+        return result.scalar_one_or_none()
+
+    async def get_or_create_by_name(self, name: str, address: Optional[str] = None) -> Shop:
+        """
+        Get existing shop by name and address, or create new one.
+
+        Args:
+            name: Shop name (required)
+            address: Shop address (optional)
+
+        Returns:
+            Shop instance (existing or newly created)
+
+        Note:
+            Uses unique constraint on (name, address) to prevent duplicates.
+            If shop with same name+address exists, returns existing.
+            Otherwise creates new shop.
+            Handles race conditions (concurrent creation) by retrying fetch on IntegrityError.
+        """
+        # Try to find existing shop
+        existing_shop = await self._find_by_name_and_address(name, address)
+
+        if existing_shop:
+            logger.info(f"Found existing shop: {existing_shop.id} ({name})")
+            return existing_shop
+
+        # Create new shop
+        new_shop = Shop(name=name, address=address)
+        self.session.add(new_shop)
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(new_shop)
+            logger.info(f"Created new shop: {new_shop.id} ({name})")
+            return new_shop
+        except IntegrityError as e:
+            await self.session.rollback()
+            # Race condition: shop was created by another request
+            # Retry: fetch existing shop
+            existing_shop = await self._find_by_name_and_address(name, address)
+            if existing_shop:
+                logger.info(f"Shop created concurrently, returning existing: {existing_shop.id}")
+                return existing_shop
+            raise e
+
+    async def _ensure_unique_shop(self, name: str, address: Optional[str], exclude_id: Optional[int] = None) -> None:
+        """
+        Checks if a combination of name and address already exists.
+        Used to prevent duplicate shops with the same name and address.
+        Note: This is case-sensitive (not using LOWER) as per database constraint.
+        """
+        existing_shop = await self._find_by_name_and_address(name, address, exclude_id)
+        if existing_shop:
             raise ResourceAlreadyExistsError("Shop", "name + address", f"{name} + {address or 'NULL'}")
 

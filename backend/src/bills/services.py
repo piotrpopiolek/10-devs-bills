@@ -237,4 +237,3 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         except IntegrityError as e:
             await self.session.rollback()
             raise e
-

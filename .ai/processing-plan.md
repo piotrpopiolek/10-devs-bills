@@ -1,8 +1,9 @@
 # Plan Implementacji Receipt Processing Pipeline
 
 **Data utworzenia:** 2025-12-08  
-**Status:** Do implementacji  
-**Priorytet:** 🔴 Krytyczne (blokujące MVP)
+**Data ukończenia:** 2025-12-08  
+**Status:** ✅ Ukończone (implementacja podstawowa)  
+**Priorytet:** 🔴 Krytyczne (blokujące MVP) - **ZREALIZOWANE**
 
 ---
 
@@ -119,7 +120,32 @@ async def download_file(self, file_path: str) -> bytes:
 
 ### Implementacja:
 
+**Status:** ✅ Zaimplementowane z refaktoryzacją (wspólna metoda `_find_by_name_and_address()`).
+
+Metoda `get_or_create_by_name()` została zaimplementowana z wykorzystaniem wspólnej metody pomocniczej `_find_by_name_and_address()`, która eliminuje duplikację kodu i jest również używana przez `_ensure_unique_shop()`.
+
 ```python
+async def _find_by_name_and_address(
+    self,
+    name: str,
+    address: Optional[str],
+    exclude_id: Optional[int] = None
+) -> Optional[Shop]:
+    """
+    Find shop by name and address.
+    Returns Shop instance if found, None otherwise.
+    """
+    stmt = select(Shop).where(
+        Shop.name == name,
+        Shop.address == address
+    )
+
+    if exclude_id is not None:
+        stmt = stmt.where(Shop.id != exclude_id)
+
+    result = await self.session.execute(stmt)
+    return result.scalar_one_or_none()
+
 async def get_or_create_by_name(self, name: str, address: Optional[str] = None) -> Shop:
     """
     Get existing shop by name and address, or create new one.
@@ -135,14 +161,10 @@ async def get_or_create_by_name(self, name: str, address: Optional[str] = None) 
         Uses unique constraint on (name, address) to prevent duplicates.
         If shop with same name+address exists, returns existing.
         Otherwise creates new shop.
+        Handles race conditions (concurrent creation) by retrying fetch on IntegrityError.
     """
     # Try to find existing shop
-    stmt = select(Shop).where(
-        Shop.name == name,
-        Shop.address == address
-    )
-    result = await self.session.execute(stmt)
-    existing_shop = result.scalar_one_or_none()
+    existing_shop = await self._find_by_name_and_address(name, address)
 
     if existing_shop:
         logger.info(f"Found existing shop: {existing_shop.id} ({name})")
@@ -161,13 +183,14 @@ async def get_or_create_by_name(self, name: str, address: Optional[str] = None) 
         await self.session.rollback()
         # Race condition: shop was created by another request
         # Retry: fetch existing shop
-        result = await self.session.execute(stmt)
-        existing_shop = result.scalar_one_or_none()
+        existing_shop = await self._find_by_name_and_address(name, address)
         if existing_shop:
             logger.info(f"Shop created concurrently, returning existing: {existing_shop.id}")
             return existing_shop
         raise e
 ```
+
+**Refaktoryzacja:** Metoda `_ensure_unique_shop()` również używa `_find_by_name_and_address()` zamiast duplikować zapytanie SQL, co eliminuje duplikację kodu (DRY principle).
 
 ### Testowanie:
 
@@ -211,7 +234,9 @@ from decimal import Decimal
 from datetime import datetime
 ```
 
-### Klasa ReceiptProcessorService:
+### Klasa BillsProcessorService:
+
+**Uwaga:** W implementacji użyto nazwy `BillsProcessorService` zamiast `ReceiptProcessorService` z planu. Nazwa została zmieniona dla lepszej spójności z konwencją nazewnictwa projektu.
 
 ````python
 logger = logging.getLogger(__name__)
@@ -792,21 +817,21 @@ except Exception as e:
 ## 📌 Checklist implementacji
 
 - [x] Krok 1: Dodanie `download_file()` do StorageService (tylko Supabase Storage)
-- [ ] Krok 2: Dodanie `get_or_create_by_name()` do ShopService
-- [ ] Krok 3: Utworzenie ReceiptProcessorService
-  - [ ] `process_receipt()` (z transakcją)
-  - [ ] `_get_bill()` (używa BillService lub bezpośrednie zapytanie)
-  - [ ] `_download_file()` (propagacja błędów)
-  - [ ] `_extract_receipt_data()` (propagacja błędów OCR)
-  - [ ] `_update_bill_status()`
-  - [ ] `_get_or_create_shop()`
-  - [ ] `_create_bill_items()` (walidacja Pydantic)
-  - [ ] `_update_bill_completed()`
-  - [ ] `_set_error()`
-- [ ] Krok 4: Utworzenie factory function (`dependencies.py`)
-- [ ] Krok 5: Integracja z Telegram Bot
+- [x] Krok 2: Dodanie `get_or_create_by_name()` do ShopService (z refaktoryzacją - wspólna metoda `_find_by_name_and_address()`)
+- [x] Krok 3: Utworzenie BillsProcessorService (nazwa zmieniona z ReceiptProcessorService)
+  - [x] `process_receipt()` (bez transakcji - serwisy wykonują własne commity)
+  - [x] `_get_bill()` (bezpośrednie zapytanie SQLAlchemy)
+  - [x] `_download_file()` (propagacja błędów)
+  - [x] `_extract_receipt_data()` (propagacja błędów OCR)
+  - [x] `_update_bill_status()`
+  - [x] `_get_or_create_shop()`
+  - [x] `_create_bill_items()` (walidacja Pydantic, obsługa unit_price calculation)
+  - [x] `_update_bill_completed()`
+  - [x] `_set_error()`
+- [x] Krok 4: Utworzenie factory function (`dependencies.py` - `get_bills_processor_service()`)
+- [x] Krok 5: Integracja z Telegram Bot (pełna implementacja w `handle_receipt_image()`)
 - [x] Dodanie `aiofiles` do zależności (następnie usunięte - niepotrzebne, tylko Supabase Storage)
-- [ ] Upewnienie się, że `BillItemCreate` ma `strict=True`
+- [x] Upewnienie się, że `BillItemCreate` ma `strict=True` (✅ przez `AppBaseModel`)
 - [ ] Testy jednostkowe
 - [ ] Testy integracyjne
 - [ ] Dokumentacja
@@ -815,7 +840,7 @@ except Exception as e:
 
 ## ⚠️ Uwagi implementacyjne
 
-1. **Transakcje DB**: ✅ Wszystkie operacje DB w `process_receipt()` są w jednej transakcji (`async with session.begin()`). W przypadku błędu, transakcja jest automatycznie rollbackowana.
+1. **Transakcje DB**: ⚠️ Operacje DB w `process_receipt()` NIE są w jednej transakcji, ponieważ serwisy (BillService, BillItemService) wykonują własne commity. Implementacja opiera się na optimistic concurrency i explicit error handling. W przyszłości można rozważyć przeniesienie do background task (Dramatiq/Celery) z pełną transakcją.
 
 2. **Error Handling**: Wyjątki domenowe (OCR, Storage) propagują się bez opakowywania, zachowując typy błędów dla lepszego logowania. Obsługa błędów odbywa się w `process_receipt()` przez `_set_error()`.
 
@@ -832,5 +857,36 @@ except Exception as e:
 8. **Async I/O**: ✅ StorageService używa tylko Supabase Storage (bez lokalnego fallback). Operacje download są asynchroniczne przez Supabase client.
 
 ---
+
+---
+
+## ✅ Status implementacji
+
+**Receipt Processing Pipeline został w pełni zaimplementowany i zintegrowany z Telegram Bot.**
+
+### Zrealizowane funkcjonalności:
+
+1. ✅ Pobieranie plików z Supabase Storage (`StorageService.download_file()`)
+2. ✅ Tworzenie/znajdowanie sklepów (`ShopService.get_or_create_by_name()`)
+3. ✅ Pełny pipeline przetwarzania (`BillsProcessorService.process_receipt()`)
+4. ✅ Integracja z OCR Service (ekstrakcja danych z paragonów)
+5. ✅ Tworzenie BillItems z walidacją Pydantic
+6. ✅ Aktualizacja statusu Bill (PENDING → PROCESSING → COMPLETED/ERROR)
+7. ✅ Obsługa błędów z zapisem error_message
+8. ✅ Factory function dla Dependency Injection (`get_bills_processor_service()`)
+9. ✅ Pełna integracja z Telegram Bot (`handle_receipt_image()`)
+
+### Różnice między planem a implementacją:
+
+- **Nazwa klasy:** `BillsProcessorService` (zamiast `ReceiptProcessorService`)
+- **Transakcje:** Operacje nie są w jednej transakcji (serwisy wykonują własne commity)
+- **Unit price calculation:** Dodano logikę obliczania `unit_price` z `total_price / quantity` jeśli nie jest podane w OCR
+
+### Następne kroki (opcjonalne):
+
+- [ ] Testy jednostkowe dla `BillsProcessorService`
+- [ ] Testy integracyjne (end-to-end z Telegram Bot)
+- [ ] Przeniesienie do background task (Dramatiq/Celery) dla async processing
+- [ ] Dokumentacja API
 
 **Koniec planu implementacji**

@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 
 from telegram import Update
 from telegram.ext import ContextTypes
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from src.auth.services import AuthService
-from src.bills.models import ProcessingStatus
+from src.bills.models import Bill, ProcessingStatus
 from src.bills.schemas import BillCreate
 from src.bills.services import BillService
 from src.common.exceptions import (
@@ -13,6 +15,7 @@ from src.common.exceptions import (
     UserCreationError,
     ResourceNotFoundError
 )
+from src.processing.dependencies import get_bills_processor_service
 from src.telegram.context import get_or_create_session, get_storage_service_for_telegram
 from src.telegram.error_mapping import get_user_message
 from src.users.services import UserService
@@ -170,7 +173,57 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
             
             await status_message.edit_text(f"Paragon przyjęty! ID: {bill.id}\nRozpoczynam analizę...")
             
-            # TODO: Trigger OCR task here via Dramatiq (using the Outbox event preferably)
+            # Trigger bill processing via BillsProcessorService
+            try:
+                # Get processor via factory function (DI pattern)
+                # Session jest już dostępny z 'async with get_or_create_session() as session:'
+                processor = await get_bills_processor_service(session=session)
+                
+                # Process receipt (OCR → AI → Database)
+                await processor.process_receipt(bill.id)
+                
+                # Pobierz zaktualizowany bill z relacjami do wyświetlenia statystyk
+                stmt = (
+                    select(Bill)
+                    .where(Bill.id == bill.id)
+                    .options(selectinload(Bill.bill_items))
+                )
+                result = await session.execute(stmt)
+                updated_bill = result.scalar_one()
+                
+                # Sprawdź status i wyświetl odpowiedni komunikat
+                if updated_bill.status == ProcessingStatus.COMPLETED:
+                    items_count = len(updated_bill.bill_items) if updated_bill.bill_items else 0
+                    await status_message.edit_text(
+                        f"✅ Paragon przetworzony!\n"
+                        f"ID: {bill.id}\n"
+                        f"Znaleziono {items_count} pozycji.\n"
+                        f"Kwota: {updated_bill.total_amount:.2f} PLN"
+                    )
+                elif updated_bill.status == ProcessingStatus.ERROR:
+                    error_msg = updated_bill.error_message[:100] if updated_bill.error_message else "Nieznany błąd"
+                    await status_message.edit_text(
+                        f"⚠️ Paragon zapisany, ale wystąpił błąd podczas analizy.\n"
+                        f"ID: {bill.id}\n"
+                        f"Błąd: {error_msg}\n"
+                        f"Spróbuj ponownie później lub skontaktuj się z supportem."
+                    )
+                else:
+                    # Status PROCESSING (nie powinno się zdarzyć, ale na wszelki wypadek)
+                    await status_message.edit_text(
+                        f"⏳ Paragon w trakcie przetwarzania...\n"
+                        f"ID: {bill.id}"
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Error processing receipt bill_id={bill.id}: {e}", exc_info=True)
+                # Bill status will be ERROR (set by BillsProcessorService._set_error())
+                # Inform user about the error
+                await status_message.edit_text(
+                    f"⚠️ Paragon zapisany, ale wystąpił błąd podczas analizy.\n"
+                    f"ID: {bill.id}\n"
+                    f"Spróbuj ponownie później lub skontaktuj się z supportem."
+                )
             
         except ResourceNotFoundError as e:
             logger.error(f"Resource not found during receipt processing: {e}", exc_info=True)
@@ -178,4 +231,3 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             logger.error(f"Error processing receipt: {e}", exc_info=True)
             await status_message.edit_text(get_user_message(e))
-

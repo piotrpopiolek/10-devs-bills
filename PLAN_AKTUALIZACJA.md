@@ -1,7 +1,7 @@
 # Plan kolejnych kroków — Bills MVP (Zaktualizowany)
 
-**Data aktualizacji:** 2025-12-08 (zaktualizowano: OCR Service zaimplementowany)  
-**Status ogólny:** ~50% ukończone
+**Data aktualizacji:** 2025-12-08 (zaktualizowano: Receipt Processing Pipeline ukończony)  
+**Status ogólny:** ~65% ukończone
 
 ---
 
@@ -134,20 +134,26 @@
   - 🔴 Uczenie się na podstawie weryfikacji użytkownika (product aliases)
 - **Szacunek:** 8-10h (uproszczone dzięki podstawowej kategoryzacji w OCR)
 
-### 5.3. Receipt Processing Pipeline
+### 5.3. Receipt Processing Pipeline ✅
 
-- **Status:** Brak
+- **Status:** Ukończone
 - **Priorytet:** Wysoki
-- **Zadania:**
-  - Utworzyć `ReceiptProcessorService` (lub podobny orchestrator)
-  - Zintegrować OCR Service → AI Categorization → Database
-  - Dodać integrację z Telegram Bot (wywołanie OCR po uploadzie zdjęcia)
-  - Dodać walidację sumy (items total vs receipt total) - częściowo w OCR Service
-  - Dodać background task (Dramatiq/Celery) dla async processing
-  - Dodać status tracking (pending → processing → completed/error) w Bill model
-  - Zapis bill_items z danymi z OCR (name, quantity, prices, category_suggestion, confidence_score)
-  - Aktualizacja statusu Bill po zakończeniu przetwarzania
-- **Szacunek:** 8-10h (uproszczone dzięki gotowemu OCR Service)
+- **Zrobione:**
+  - ✅ `StorageService.download_file()` - pobieranie plików z Supabase Storage
+  - ✅ `ShopService.get_or_create_by_name()` - tworzenie/znajdowanie sklepów (z refaktoryzacją - wspólna metoda `_find_by_name_and_address()`)
+  - ✅ `BillsProcessorService` - pełny orchestrator przetwarzania paragonów
+  - ✅ Integracja OCR Service → Database (tworzenie BillItems)
+  - ✅ Integracja z Telegram Bot (wywołanie OCR po uploadzie zdjęcia)
+  - ✅ Walidacja sumy (items total vs receipt total) - w OCR Service
+  - ✅ Status tracking (pending → processing → completed/error) w Bill model
+  - ✅ Zapis bill_items z danymi z OCR (name, quantity, prices, category_suggestion, confidence_score)
+  - ✅ Aktualizacja statusu Bill po zakończeniu przetwarzania
+  - ✅ Factory function dla Dependency Injection (`get_bills_processor_service()`)
+  - ✅ Obsługa błędów z zapisem error_message
+- **Brakujące (opcjonalne, post-MVP):**
+  - 🟢 Background task (Dramatiq/Celery) dla async processing (można odłożyć na post-MVP)
+  - 🟢 Testy jednostkowe i integracyjne
+- **Pliki:** `backend/src/processing/service.py`, `backend/src/processing/dependencies.py`, `backend/src/telegram/handlers.py`
 
 ---
 
@@ -168,19 +174,18 @@
 
 ### 3.2. Telegram Bot Service (rozbudowa)
 
-- **Status:** Częściowo (obsługa zdjęć gotowa, brak integracji z OCR/AI)
+- **Status:** Częściowo (obsługa zdjęć i integracja z OCR ukończone)
 - **Priorytet:** Średni
 - **Zrobione:**
   - ✅ Obsługa zdjęć paragonów (MessageHandler dla photos/documents)
   - ✅ Upload do Storage i tworzenie Bill record
-  - ✅ OCR Service gotowy do integracji
+  - ✅ Integracja OCR Service w `handle_receipt_image()` - **UKOŃCZONE**
+  - ✅ `send_receipt_confirmation(bill_id)` - potwierdzenie przetworzenia (po zakończeniu OCR/AI) - **UKOŃCZONE**
+  - ✅ Integracja z Receipt Processing Pipeline (trigger OCR task) - **UKOŃCZONE**
 - **Brakujące funkcjonalności:**
-  - 🔴 Integracja OCR Service w `handle_receipt_image()` (TODO w linii 173)
-  - 🔴 `send_receipt_confirmation(bill_id)` - potwierdzenie przetworzenia (po zakończeniu OCR/AI)
-  - 🔴 `send_verification_request(bill_item_id)` - prośba o weryfikację (dla confidence < 0.8)
-  - 🔴 `send_summary(user_id, period)` - podsumowanie wydatków (integracja z Reports)
-  - 🔴 Integracja z Receipt Processing Pipeline (trigger OCR task)
-- **Szacunek:** 4-5h (po zaimplementowaniu Receipt Processing Pipeline)
+  - 🟡 `send_verification_request(bill_item_id)` - prośba o weryfikację (dla confidence < 0.8)
+  - 🟡 `send_summary(user_id, period)` - podsumowanie wydatków (integracja z Reports)
+- **Szacunek:** 2-3h (po zaimplementowaniu Reports module)
 
 ### 4.1. Verification workflow
 
@@ -283,11 +288,11 @@
 - ✅ Rate limiting
 - ✅ User isolation (wszystkie endpointy zabezpieczone) - **UKOŃCZONE**
 - ✅ Telegram webhook
-- ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation)
+- ✅ Telegram Bot - obsługa zdjęć (upload + Bill creation + OCR integration) - **UKOŃCZONE**
 - ✅ Storage Service (Supabase + fallback)
 - ✅ OCR Service (LLM-based - Gemini API) - **UKOŃCZONE**
 - 🟡 AI Categorization (częściowo - podstawowa kategoryzacja w OCR)
-- 🔴 Receipt Processing Pipeline
+- ✅ Receipt Processing Pipeline - **UKOŃCZONE**
 
 ### Ważne (dla pełnego MVP):
 
@@ -304,12 +309,26 @@
 
 ## 📊 Postęp ogólny
 
-- **Ukończone:** ~50% (+10% od ostatniej aktualizacji)
-- **W trakcie:** ~5%
-- **Do zrobienia:** ~45%
+- **Ukończone:** ~65% (+13% od ostatniej aktualizacji)
+- **W trakcie:** ~5% (AI Categorization Service - częściowo)
+- **Do zrobienia:** ~30%
 
 **Ostatnie osiągnięcia:**
 
+- ✅ Receipt Processing Pipeline - **PEŁNA IMPLEMENTACJA UKOŃCZONA**
+  - ✅ `BillsProcessorService` - pełny orchestrator przetwarzania paragonów
+  - ✅ Integracja z OCR Service (ekstrakcja danych z paragonów)
+  - ✅ Tworzenie BillItems z walidacją Pydantic
+  - ✅ Aktualizacja statusu Bill (PENDING → PROCESSING → COMPLETED/ERROR)
+  - ✅ Obsługa błędów z zapisem error_message
+  - ✅ Factory function dla Dependency Injection
+  - ✅ Pełna integracja z Telegram Bot (`handle_receipt_image()`)
+- ✅ Telegram Bot - pełna integracja z Receipt Processing Pipeline
+  - ✅ Automatyczne przetwarzanie paragonów po uploadzie
+  - ✅ Potwierdzenie przetworzenia z informacją o liczbie pozycji i kwocie
+  - ✅ Obsługa błędów z komunikatem dla użytkownika
+- ✅ Receipt Processing Pipeline - Krok 1: `StorageService.download_file()` - pobieranie plików z Supabase Storage
+- ✅ Receipt Processing Pipeline - Krok 2: `ShopService.get_or_create_by_name()` - tworzenie/znajdowanie sklepów (z refaktoryzacją - wspólna metoda `_find_by_name_and_address()`)
 - ✅ OCR Service (LLM-based) - pełna implementacja z Gemini API
   - Ekstrakcja danych z paragonów (items, total, date, shop_name)
   - Walidacja plików, error handling, retry logic
@@ -320,13 +339,12 @@
 - ✅ Filtrowanie na poziomie SQL (`WHERE user_id = ?`) dla `GET /bills`
 - ✅ Sprawdzanie ownership przed każdą operacją modyfikującą
 - ✅ Storage Service zintegrowany z Supabase Storage
-- ✅ Telegram Bot - pełna obsługa zdjęć paragonów (upload + tworzenie Bill)
 
 **Następne kroki (priorytet):**
 
-1. 🔴 Receipt Processing Pipeline (integracja OCR → AI → Database) - **KRYTYCZNE dla MVP**
-2. 🟡 AI Categorization Service (rozbudowa - normalizacja, Product Index mapping)
-3. 🟡 Integracja OCR Service z Telegram Bot (wywołanie OCR po uploadzie)
+1. 🟡 AI Categorization Service (rozbudowa - normalizacja, Product Index mapping) - **WAŻNE dla pełnego MVP**
+2. 🟡 Reports module (daily/weekly/monthly) - **WAŻNE dla pełnego MVP**
+3. 🟡 Verification workflow improvements - **WAŻNE dla pełnego MVP**
 
 **Uwaga:** OCR Service został zaimplementowany z użyciem Gemini API (podobne rozwiązanie LLM-based jak planowane OpenAI Vision API). Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP jako ulepszenie.
 
