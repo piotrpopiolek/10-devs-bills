@@ -15,22 +15,6 @@ class BillItemValidationMixin:
                 raise ValueError("Quantity must be positive")
         return v
 
-    @field_validator('unit_price', check_fields=False)
-    @classmethod
-    def validate_unit_price(cls, v: Optional[Decimal]) -> Optional[Decimal]:
-        if v is not None:
-            if v < 0:
-                raise ValueError("Unit price cannot be negative")
-        return v
-
-    @field_validator('total_price', check_fields=False)
-    @classmethod
-    def validate_total_price(cls, v: Optional[Decimal]) -> Optional[Decimal]:
-        if v is not None:
-            if v < 0:
-                raise ValueError("Total price cannot be negative")
-        return v
-
     @field_validator('confidence_score', check_fields=False)
     @classmethod
     def validate_confidence_score(cls, v: Optional[Decimal]) -> Optional[Decimal]:
@@ -71,13 +55,11 @@ class BillItemBase(AppBaseModel, BillItemValidationMixin):
     
     unit_price: Decimal = Field(
         ...,
-        ge=0,
         description="Unit price of the item (required, must be non-negative, max 12 digits with 2 decimal places)"
     )
     
     total_price: Decimal = Field(
         ...,
-        ge=0,
         description="Total price of the item (required, must be non-negative, max 12 digits with 2 decimal places)"
     )
     

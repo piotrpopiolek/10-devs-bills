@@ -77,7 +77,7 @@ class OCRReceiptData(AppBaseModel):
         
         # Level 2: Minor mismatch (5-20%) - flag for verification
         if percentage_diff > Decimal("5.0"):
-            self.requires_verification = True
+            object.__setattr__(self, 'requires_verification', True)
             logger.warning(
                 f"Total amount mismatch detected (requires verification). "
                 f"Items sum: {items_sum} PLN, "

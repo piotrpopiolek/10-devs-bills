@@ -231,6 +231,9 @@ class BillsProcessorService:
         """
         Create BillItems from OCR data.
         Validates data via Pydantic before DB insertion.
+        
+        Items with negative prices (discounts/rebates) are automatically marked
+        as requiring verification (is_verified=False) so user can review and correct them.
         """
         if not ocr_data.items:
             logger.warning(f"No items in OCR data for bill_id={bill_id}")
@@ -239,8 +242,17 @@ class BillsProcessorService:
         created_count = 0
         for ocr_item in ocr_data.items:
             try:
-                # Determine if item needs verification (confidence < 0.8)
-                needs_verification = ocr_item.confidence_score < 0.8
+                # Items with negative prices always require verification
+                # (discounts, rebates, returns - user should review these)
+                has_negative_price = ocr_item.total_price < 0
+                
+                # Determine if item needs verification
+                # - Negative prices always need verification
+                # - Low confidence also requires verification
+                needs_verification = (
+                    has_negative_price or 
+                    ocr_item.confidence_score < 0.8
+                )
 
                 # Calculate unit_price if not provided
                 unit_price = ocr_item.unit_price
@@ -255,7 +267,14 @@ class BillsProcessorService:
                         )
                         continue
 
-                # Pydantic validation (BillItemCreate has strict=True via AppBaseModel)
+                # Log negative prices for monitoring
+                if has_negative_price:
+                    logger.info(
+                        f"Item with negative price detected (will require verification) for bill_id={bill_id}: "
+                        f"{ocr_item.name} ({ocr_item.total_price} PLN)"
+                    )
+
+                # Pydantic validation (BillItemCreate now allows negative prices)
                 bill_item_data = BillItemCreate(
                     bill_id=bill_id,
                     quantity=ocr_item.quantity,
@@ -263,7 +282,7 @@ class BillsProcessorService:
                     total_price=ocr_item.total_price,
                     original_text=ocr_item.name,
                     confidence_score=Decimal(str(ocr_item.confidence_score)),
-                    is_verified=not needs_verification,  # Auto-verified if confidence >= 0.8
+                    is_verified=not needs_verification,  # False if negative price or low confidence
                     verification_source=VerificationSource.AUTO
                 )
 
