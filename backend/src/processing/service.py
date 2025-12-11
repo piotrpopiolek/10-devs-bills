@@ -52,7 +52,8 @@ class BillsProcessorService:
         ocr_service: OCRService,
         bill_service: BillService,
         bill_item_service: BillItemService,
-        shop_service: ShopService
+        shop_service: ShopService,
+        ai_service: AICategorizationService
     ):
         self.session = session
         self.storage_service = storage_service
@@ -60,6 +61,7 @@ class BillsProcessorService:
         self.bill_service = bill_service
         self.bill_item_service = bill_item_service
         self.shop_service = shop_service
+        self.ai_service = ai_service
 
     async def process_receipt(self, bill_id: int) -> None:
         """

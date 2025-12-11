@@ -120,19 +120,20 @@
 
 ## 🔴 Krytyczne (Blokujące MVP)
 
-### 5.2. AI Categorization Service
+### 5.2. AI Categorization Service ✅
 
-- **Status:** Częściowo (podstawowa kategoryzacja w OCR Service)
+- **Status:** Ukończone
 - **Priorytet:** Wysoki
 - **Zrobione:**
   - ✅ OCR Service zwraca `category_suggestion` dla każdego produktu (podstawowa kategoryzacja przez LLM)
-- **Brakujące:**
-  - 🔴 Osobny serwis `backend/src/ai/service.py` dla zaawansowanej kategoryzacji
-  - 🔴 Normalizacja nazw produktów (mapowanie wariantów OCR na standardowe nazwy)
-  - 🔴 Mapowanie do Product Index (słownik produktów w bazie danych)
-  - 🔴 Fallback do kategorii "Inne" dla nieznanych produktów
-  - 🔴 Uczenie się na podstawie weryfikacji użytkownika (product aliases)
-- **Szacunek:** 8-10h (uproszczone dzięki podstawowej kategoryzacji w OCR)
+  - ✅ Osobny serwis `backend/src/ai/service.py` dla zaawansowanej kategoryzacji
+  - ✅ Normalizacja nazw produktów (mapowanie wariantów OCR na standardowe nazwy)
+  - ✅ Mapowanie do Product Index (słownik produktów w bazie danych)
+  - ✅ Fallback do kategorii "Inne" dla nieznanych produktów (z automatycznym tworzeniem kategorii)
+  - ✅ Uczenie się na podstawie weryfikacji użytkownika (product aliases z UPSERT)
+  - ✅ AI Categorization z Gemini API (Step 3 w workflow normalizacji)
+  - ✅ Retry pattern dla wywołań Gemini API (tenacity, spójny z OCRService)
+  - ✅ Walidacja odpowiedzi AI (confidence threshold, istnienie kategorii w DB)
 
 ### 5.3. Receipt Processing Pipeline ✅
 
@@ -309,9 +310,9 @@
 
 ## 📊 Postęp ogólny
 
-- **Ukończone:** ~65% (+13% od ostatniej aktualizacji)
-- **W trakcie:** ~5% (AI Categorization Service - częściowo)
-- **Do zrobienia:** ~30%
+- **Ukończone:** ~75% (+10% od ostatniej aktualizacji)
+- **W trakcie:** ~0% (AI Categorization Service - ukończone)
+- **Do zrobienia:** ~25%
 
 **Ostatnie osiągnięcia:**
 
@@ -342,7 +343,7 @@
 
 **Następne kroki (priorytet):**
 
-1. 🟡 AI Categorization Service (rozbudowa - normalizacja, Product Index mapping) - **WAŻNE dla pełnego MVP**
+1. ✅ AI Categorization Service - **UKOŃCZONE**
 2. 🟡 Reports module (daily/weekly/monthly) - **WAŻNE dla pełnego MVP**
 3. 🟡 Verification workflow improvements - **WAŻNE dla pełnego MVP**
 

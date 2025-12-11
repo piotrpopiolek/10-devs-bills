@@ -317,16 +317,16 @@ More information: `astro/src/test/README.md`
 
 ## Project status
 
-MVP in progress (~50% complete). Current focus:
+MVP in progress (~75% complete). Current focus:
 
 - ✅ OCR Service (LLM-based with Gemini API) - **Completed**
 - ✅ Telegram Bot - receipt image upload and Bill creation - **Completed**
 - ✅ User isolation and rate limiting - **Completed**
 - ✅ Storage Service (Supabase) - **Completed**
-- 🔴 Receipt Processing Pipeline (OCR → AI → Database) - **In Progress**
-- 🟡 AI Categorization Service (normalization, Product Index mapping) - **Partial**
+- ✅ Receipt Processing Pipeline (OCR → AI → Database) - **Completed**
+- ✅ AI Categorization Service (normalization, Product Index mapping) - **Completed** (2025-01-27)
 - 🟡 Reports module (daily/weekly/monthly summaries) - **Planned**
-- 🟡 Telegram Bot integration with OCR - **Planned**
+- 🟡 Verification workflow improvements - **Planned**
 
 Success metrics:
 

@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,8 @@ from src.categories.exceptions import (
     CategoryHasChildrenError
 )
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
     def __init__(self, session: AsyncSession):
@@ -115,6 +118,7 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
         
         Strategia:
         1. Próbuje znaleźć kategorię po nazwie z configu (AI_FALLBACK_CATEGORY_NAME)
+        2. Jeśli nie istnieje, tworzy ją automatycznie
         
         Returns:
             Category: Kategoria domyślna (np. "Inne")
@@ -125,6 +129,13 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
         stmt = select(Category).where(func.lower(Category.name) == func.lower(fallback_name))
         result = await self.session.execute(stmt)
         category = result.scalar_one_or_none()
+        
+        # Jeśli kategoria nie istnieje, utwórz ją
+        if not category:
+            from src.categories.schemas import CategoryCreate
+            category_data = CategoryCreate(name=fallback_name, parent_id=None)
+            category = await self.create(category_data)
+            logger.info(f"Utworzono kategorię fallback: {fallback_name}")
             
         return category
 

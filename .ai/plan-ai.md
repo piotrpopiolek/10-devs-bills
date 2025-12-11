@@ -554,40 +554,78 @@ Zastąpienie `pg_trgm` wyszukiwaniem wektorowym (`pgvector`) dla lepszego zrozum
 
 ## 9. Implementacja krok po kroku (Zaktualizowana)
 
-### Krok 1: Struktura i Pre-processing [MVP]
+**Data ostatniej aktualizacji:** 2025-01-27  
+**Status:** Większość kroków ukończona, code review wykonany
 
-- [ ] Utworzyć strukturę plików
-- [ ] Zaimplementować `_preprocess_text` w `service.py`
+### Krok 1: Struktura i Pre-processing [MVP] ✅
 
-### Krok 2: Schemas i Modele [MVP]
+- [x] Utworzyć strukturę plików
+- [x] Zaimplementować `_preprocess_text` w `service.py`
 
-- [ ] `NormalizedItem` (z logiką cen i walidacji)
+### Krok 2: Schemas i Modele [MVP] ✅
 
-### Krok 3: Aliasy z UPSERT [MVP]
+- [x] `NormalizedItem` (z logiką cen i walidacji)
 
-- [ ] Implementacja `_find_by_alias` (3 zapytania, z indeksem funkcyjnym)
-- [ ] Implementacja zapisu aliasu z użyciem `ON CONFLICT`
+### Krok 3: Aliasy z UPSERT [MVP] ✅
 
-### Krok 4: Fuzzy Search [MVP]
+- [x] Implementacja `_find_by_alias` (3 zapytania, z indeksem funkcyjnym)
+- [x] Implementacja zapisu aliasu z użyciem `ON CONFLICT`
 
-- [ ] Implementacja z nowym thresholdem (0.75) i logiką długości słowa
+### Krok 4: Fuzzy Search [MVP] ✅
 
-### Krok 5: AI Categorization (Gemini API) [MVP]
+- [x] Implementacja z nowym thresholdem (0.75) i logiką długości słowa
 
-- [ ] Dodać metodę `_get_all_categories()` do CategoryService (pobranie listy kategorii)
-- [ ] Zaimplementować `_ai_categorize_product()` w AICategorizationService
-  - Przygotowanie promptu z kontekstem (produkt, sugestia, sklep, lista kategorii)
-  - Wywołanie Gemini API z structured output (JSON)
-  - Walidacja odpowiedzi (confidence threshold, istnienie kategorii)
-  - Retry pattern (tenacity) dla odporności na błędy
-- [ ] Zintegrować AI Categorization w `normalize_item()` (Step 3)
-- [ ] Dodać fallback do kategorii "Inne" jeśli AI nie zwróciło wyniku
-- [ ] `CategoryService.get_fallback_category()` (już zaimplementowane)
+### Krok 5: AI Categorization (Gemini API) [MVP] ✅
 
-### Krok 6: Refaktoryzacja Processing Pipeline [MVP]
+- [x] Dodać metodę `get_all_categories()` do CategoryService (pobranie listy kategorii)
+- [x] Zaimplementować `_ai_categorize_product()` w AICategorizationService
+  - [x] Przygotowanie promptu z kontekstem (produkt, sugestia, sklep, lista kategorii)
+  - [x] Wywołanie Gemini API z structured output (JSON)
+  - [x] Walidacja odpowiedzi (confidence threshold, istnienie kategorii)
+  - [x] Retry pattern (tenacity) dla odporności na błędy
+- [x] Zintegrować AI Categorization w `normalize_item()` (Step 3)
+- [x] Dodać fallback do kategorii "Inne" jeśli AI nie zwróciło wyniku
+- [x] `CategoryService.get_fallback_category()`
 
-- [ ] Zmiana `_create_bill_items` na `List[NormalizedItem]`
-- [ ] Przeniesienie logiki wyliczania cen do mappera/AI serwisu
-- [ ] Zarządzanie transakcjami (AI przed `session.begin()`)
+### Krok 6: Refaktoryzacja Processing Pipeline [MVP] ✅
+
+- [x] Zmiana `_create_bill_items` na `List[NormalizedItem]`
+- [x] Przeniesienie logiki wyliczania cen do mappera/AI serwisu
+- [x] Zarządzanie transakcjami (AI przed `session.begin()`)
+
+---
+
+## 10. Code Review i Naprawy (2025-01-27)
+
+### Naprawione błędy krytyczne:
+
+1. ✅ **Brak parametru `ai_service` w konstruktorze `BillsProcessorService`**
+
+   - Dodano parametr `ai_service: AICategorizationService` do `__init__()`
+   - Dodano przypisanie `self.ai_service = ai_service`
+
+2. ✅ **`CategoryService.get_fallback_category()` może zwrócić `None`**
+   - Dodano logikę automatycznego tworzenia kategorii fallback jeśli nie istnieje
+   - Używa `CategoryCreate` schema do bezpiecznego utworzenia
+
+### Dodane ulepszenia:
+
+1. ✅ **Retry pattern dla wywołań Gemini API**
+
+   - Dodano dekorator `@retry` z `tenacity` (spójny z OCRService)
+   - Funkcja `_should_retry_gemini_error()` filtruje błędy do retry (sieć, timeout, rate limit)
+
+2. ✅ **Walidacja `available_categories` w `_ai_categorize_product()`**
+
+   - Dodano sprawdzenie `len(available_categories) == 0`
+
+3. ✅ **Walidacja `category_id` przed użyciem w `normalize_item()`**
+   - Dodano sprawdzenie istnienia kategorii w DB przed zwróceniem `NormalizedItem`
+   - Fallback do kategorii "Inne" jeśli AI zwróciło nieprawidłowe ID
+
+### Pozostałe sugestie (do rozważenia):
+
+- Obsługa błędów w `_normalize_items()` - czy `continue` jest zamierzone? (patrz CODE_REVIEW.md)
+- Walidacja `category_id` w `NormalizedItem` schema (obecnie `Optional[int]`, ale zawsze używamy fallback)
 
 ---

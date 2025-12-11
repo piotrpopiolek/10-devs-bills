@@ -6,10 +6,13 @@ from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from src.config import settings
 from src.ai.schemas import NormalizedItem
 from src.ai.exceptions import CategorizationError
+from src.common.exceptions import ResourceNotFoundError
 from src.ocr.schemas import OCRItem
 from src.product_indexes.models import ProductIndex
 from src.product_index_aliases.models import ProductIndexAlias
@@ -19,6 +22,33 @@ from src.categories.services import CategoryService
 from src.categories.models import Category
 
 logger = logging.getLogger(__name__)
+
+
+def _should_retry_gemini_error(exception: Exception) -> bool:
+    """
+    Sprawdza, czy błąd Gemini powinien być retryowany.
+    
+    NIE retryujemy:
+    - InvalidArgument (błędne żądanie)
+    - PermissionDenied (brak uprawnień)
+    
+    Retryujemy:
+    - ResourceExhausted (429 Too Many Requests)
+    - ServiceUnavailable (503)
+    - InternalServerError (500)
+    - DeadlineExceeded (Timeout)
+    """
+    if isinstance(exception, (
+        google_exceptions.ResourceExhausted,
+        google_exceptions.ServiceUnavailable,
+        google_exceptions.InternalServerError,
+        google_exceptions.DeadlineExceeded,
+        google_exceptions.Aborted,
+    )):
+        logger.warning(f"Gemini API error (will retry): {str(exception)}")
+        return True
+        
+    return False
 
 
 class AICategorizationService:
@@ -195,6 +225,12 @@ class AICategorizationService:
         
         return row[0] if row else None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_should_retry_gemini_error),
+        reraise=True
+    )
     async def _ai_categorize_product(
         self,
         cleaned_text: str,
@@ -227,14 +263,14 @@ class AICategorizationService:
         4. Sprawdź confidence score (threshold: 0.8)
         5. Zwróć category_id lub None
         """
-        if not available_categories:
+        if not available_categories or len(available_categories) == 0:
             logger.warning("Brak dostępnych kategorii dla AI Categorization")
             return None
 
         # Przygotowanie promptu
         categories_list = "\n".join([f"- {cat.name}" for cat in available_categories])
 
-        prompt = f"""Jesteś ekspertem w kategoryzacji produktów ze sklepów spożywczych.
+        prompt = f"""Jesteś ekspertem w kategoryzacji produktów ze sklepów.
 
 Produkt: {cleaned_text}
 Sugerowana kategoria (z OCR): {category_suggestion or "brak"}
@@ -422,19 +458,30 @@ Zwróć odpowiedź w formacie JSON:
         )
 
         if ai_category_id:
-            # AI zaproponowało kategorię z wystarczającą pewnością
-            logger.info(f"AI skategoryzowało produkt '{cleaned_text}' do kategorii ID: {ai_category_id}")
-            return NormalizedItem(
-                original_text=ocr_item.name,
-                normalized_name=None,  # Produkt nieznany, tylko kategoria
-                quantity=ocr_item.quantity,
-                unit_price=ocr_item.unit_price or Decimal("0.0"),
-                total_price=ocr_item.total_price,
-                category_id=ai_category_id,
-                product_index_id=None,
-                confidence_score=ocr_item.confidence_score * 0.7,  # AI match penalty
-                is_confident=True
-            )
+            # Walidacja: sprawdź czy kategoria rzeczywiście istnieje w DB
+            try:
+                await self.category_service.get_by_id(ai_category_id)
+            except ResourceNotFoundError:
+                logger.warning(
+                    f"AI zwróciło nieistniejące category_id={ai_category_id} dla produktu: {cleaned_text}. "
+                    "Używam fallback."
+                )
+                ai_category_id = None
+            
+            if ai_category_id:
+                # AI zaproponowało kategorię z wystarczającą pewnością
+                logger.info(f"AI skategoryzowało produkt '{cleaned_text}' do kategorii ID: {ai_category_id}")
+                return NormalizedItem(
+                    original_text=ocr_item.name,
+                    normalized_name=None,  # Produkt nieznany, tylko kategoria
+                    quantity=ocr_item.quantity,
+                    unit_price=ocr_item.unit_price or Decimal("0.0"),
+                    total_price=ocr_item.total_price,
+                    category_id=ai_category_id,
+                    product_index_id=None,
+                    confidence_score=ocr_item.confidence_score * 0.7,  # AI match penalty
+                    is_confident=True
+                )
 
         # Step 4: Fallback - produkt nieznany systemowi (AI nie znalazło kategorii)
         fallback_category = await self.category_service.get_fallback_category()
