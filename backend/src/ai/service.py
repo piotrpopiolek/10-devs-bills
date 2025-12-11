@@ -1,4 +1,6 @@
 import re
+import json
+import logging
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy import select, func
@@ -13,6 +15,9 @@ from src.product_index_aliases.models import ProductIndexAlias
 from src.product_indexes.services import ProductIndexService
 from src.product_index_aliases.services import ProductIndexAliasService
 from src.categories.services import CategoryService
+from src.categories.models import Category
+ import google.generativeai as genai
+logger = logging.getLogger(__name__)
 
 
 class AICategorizationService:
@@ -41,6 +46,9 @@ class AICategorizationService:
         self.product_index_service = product_index_service
         self.alias_service = alias_service
         self.category_service = category_service
+        
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self.gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
     def _preprocess_text(self, raw_text: str) -> str:
         """
@@ -186,26 +194,144 @@ class AICategorizationService:
         
         return row[0] if row else None
 
+    async def _ai_categorize_product(
+        self,
+        cleaned_text: str,
+        category_suggestion: Optional[str] = None,
+        shop_name: Optional[str] = None,
+        available_categories: Optional[list[Category]] = None
+    ) -> Optional[int]:
+        """
+        Używa Gemini API do zaproponowania kategorii dla nieznanego produktu.
+
+        KRYTYCZNE: Ta metoda NIE może być wywołana wewnątrz transakcji DB!
+        - Wywołania zewnętrznych API (Gemini) mogą trwać sekundy
+        - Trzymanie otwartej transakcji DB blokuje połączenie i może spowodować deadlock
+        - Wywołaj TĘ METODĘ PRZED otwarciem transakcji session.begin()
+
+        Args:
+            cleaned_text: Wyczyszczony tekst produktu (np. "Mleko 3.2%")
+            category_suggestion: Sugestia kategorii z OCR/LLM (opcjonalne)
+            shop_name: Nazwa sklepu dla kontekstu (opcjonalne)
+            available_categories: Lista dostępnych kategorii z DB (wymagane)
+
+        Returns:
+            category_id jeśli AI znalazło dopasowanie (confidence >= threshold)
+            None jeśli AI nie jest pewne (wtedy użyj fallback)
+
+        Proces:
+        1. Przygotuj prompt z kontekstem (produkt, sugestia, sklep, lista kategorii)
+        2. Wywołaj Gemini API z structured output (JSON schema)
+        3. Waliduj odpowiedź (czy zaproponowana kategoria istnieje w DB)
+        4. Sprawdź confidence score (threshold: 0.8)
+        5. Zwróć category_id lub None
+        """
+        if not available_categories:
+            logger.warning("Brak dostępnych kategorii dla AI Categorization")
+            return None
+
+        # Przygotowanie promptu
+        categories_list = "\n".join([f"- {cat.name}" for cat in available_categories])
+
+        prompt = f"""Jesteś ekspertem w kategoryzacji produktów ze sklepów spożywczych.
+
+Produkt: {cleaned_text}
+Sugerowana kategoria (z OCR): {category_suggestion or "brak"}
+Sklep: {shop_name or "nieznany"}
+
+Dostępne kategorie:
+{categories_list}
+
+Zadanie:
+1. Wybierz NAJLEPSZĄ kategorię z listy dostępnych kategorii dla tego produktu.
+2. Jeśli żadna kategoria nie pasuje idealnie, zwróć null (nie wymyślaj nowych kategorii).
+3. Oceń swoją pewność (confidence) w przedziale 0.0-1.0.
+
+Zwróć odpowiedź w formacie JSON:
+{{
+    "category_name": "Nazwa kategorii z listy lub null",
+    "confidence": 0.95,
+    "reasoning": "Krótkie uzasadnienie wyboru"
+}}"""
+
+        try:
+            
+            response = await self.gemini_model.generate_content_async(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=settings.AI_CATEGORIZATION_TEMPERATURE,
+                )
+            )
+
+            if not response.text:
+                logger.warning("Gemini zwróciło pustą odpowiedź dla kategoryzacji")
+                return None
+
+            # Parsowanie JSON response
+            parsed_data = json.loads(response.text)
+            category_name = parsed_data.get("category_name")
+            confidence = parsed_data.get("confidence", 0.0)
+            reasoning = parsed_data.get("reasoning", "")
+
+            # Walidacja confidence threshold
+            if confidence < settings.AI_CATEGORIZATION_CONFIDENCE_THRESHOLD:
+                logger.info(
+                    f"AI confidence za niska ({confidence}) dla produktu: {cleaned_text}"
+                )
+                return None
+
+            # Walidacja: czy kategoria nie jest null
+            if not category_name:
+                logger.info(f"AI nie zaproponowało kategorii dla: {cleaned_text}")
+                return None
+
+            # Znajdź kategorię w dostępnych kategoriach (case-insensitive)
+            for cat in available_categories:
+                if cat.name.lower() == category_name.lower():
+                    logger.info(
+                        f"AI zaproponowało kategorię: {category_name} "
+                        f"(confidence: {confidence}, reasoning: {reasoning})"
+                    )
+                    return cat.id
+
+            # Kategoria nie znaleziona w liście (AI zaproponowało coś spoza listy)
+            logger.warning(
+                f"AI zaproponowało nieistniejącą kategorię: {category_name} "
+                f"dla produktu: {cleaned_text}"
+            )
+            return None
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Nieprawidłowa odpowiedź JSON z Gemini: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Błąd wywołania Gemini API: {str(e)}", exc_info=True)
+            return None  # Fallback do kategorii "Inne"
+
     async def normalize_item(
         self,
         ocr_item: OCRItem,
         shop_id: Optional[int] = None,
+        shop_name: Optional[str] = None,
         user_id: Optional[int] = None,
         save_alias: bool = True
     ) -> NormalizedItem:
         """
         Główna metoda normalizacji produktu z OCR.
         
-        Workflow:
+        Workflow (zaktualizowany z AI Categorization):
         1. Pre-processing (czyszczenie tekstu)
         2. Wyszukiwanie w aliasach (priorytet: User+Shop -> Shop -> Global)
         3. Jeśli nie znaleziono: Fuzzy search w ProductIndex
-        4. Jeśli nie znaleziono: Fallback do kategorii "Inne"
-        5. Opcjonalnie: Zapisanie nowego aliasu (UPSERT)
+        4. Jeśli nie znaleziono: AI Categorization (Gemini API) [NOWE w MVP]
+        5. Jeśli AI nie zwróciło wyniku: Fallback do kategorii "Inne"
+        6. Opcjonalnie: Zapisanie nowego aliasu (UPSERT)
         
         Args:
             ocr_item: Pozycja z OCR (surowe dane)
             shop_id: ID sklepu (dla kontekstu aliasów)
+            shop_name: Nazwa sklepu (dla kontekstu AI Categorization) [NOWE]
             user_id: ID użytkownika (dla kontekstu aliasów)
             save_alias: Czy zapisać alias po normalizacji (domyślnie True)
             
@@ -270,7 +396,7 @@ class AICategorizationService:
                 except Exception as e:
                     # Log error, ale nie przerywaj procesu
                     # (alias nie jest krytyczny dla normalizacji)
-                    pass
+                    logger.error(f"Błąd zapisu aliasu: {str(e)}")
             
             return NormalizedItem(
                 original_text=ocr_item.name,
@@ -284,8 +410,35 @@ class AICategorizationService:
                 is_confident=True
             )
 
-        # Step 3: Fallback - produkt nieznany systemowi
+        # Step 3: AI Categorization (Gemini API) [MVP]
+        # KRYTYCZNE: Ta operacja jest POZA transakcją DB (wywołania API mogą trwać sekundy)
+        available_categories = await self.category_service.get_all_categories()
+        ai_category_id = await self._ai_categorize_product(
+            cleaned_text=cleaned_text,
+            category_suggestion=ocr_item.category_suggestion,
+            shop_name=shop_name,
+            available_categories=available_categories
+        )
+
+        if ai_category_id:
+            # AI zaproponowało kategorię z wystarczającą pewnością
+            logger.info(f"AI skategoryzowało produkt '{cleaned_text}' do kategorii ID: {ai_category_id}")
+            return NormalizedItem(
+                original_text=ocr_item.name,
+                normalized_name=None,  # Produkt nieznany, tylko kategoria
+                quantity=ocr_item.quantity,
+                unit_price=ocr_item.unit_price or Decimal("0.0"),
+                total_price=ocr_item.total_price,
+                category_id=ai_category_id,
+                product_index_id=None,
+                confidence_score=ocr_item.confidence_score * 0.7,  # AI match penalty
+                is_confident=True
+            )
+
+        # Step 4: Fallback - produkt nieznany systemowi (AI nie znalazło kategorii)
         fallback_category = await self.category_service.get_fallback_category()
+        
+        logger.info(f"Fallback do kategorii 'Inne' dla produktu: {cleaned_text}")
         
         return NormalizedItem(
             original_text=ocr_item.name,

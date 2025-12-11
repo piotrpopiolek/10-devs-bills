@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     AI_MIN_WORD_LENGTH_STRICT: int = 5  # Dla słów krótszych niż 5, wymagany wyższy threshold
     AI_STRICT_THRESHOLD: float = 0.9  # Threshold dla krótkich słów
     AI_FALLBACK_CATEGORY_NAME: str = "Inne"  # Nazwa kategorii fallback
+    AI_CATEGORIZATION_CONFIDENCE_THRESHOLD: float = 0.8  # Minimalna pewność AI (0.0-1.0)
+    AI_CATEGORIZATION_TEMPERATURE: float = 0.3  # Temperatura dla Gemini (niższa = bardziej deterministyczne)
     
     # Celery
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"

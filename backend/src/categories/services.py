@@ -127,3 +127,15 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
         category = result.scalar_one_or_none()
             
         return category
+
+    async def get_all_categories(self) -> list[Category]:
+        """
+        Zwraca listę wszystkich kategorii z bazy danych.
+        Używane przez AI Categorization do wyboru kategorii przez Gemini API.
+
+        Returns:
+            list[Category]: Lista wszystkich kategorii (posortowana alfabetycznie)
+        """
+        stmt = select(Category).order_by(Category.name)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
