@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # Freemium Limits
     MONTHLY_BILLS_LIMIT: int = 100  # Free tier limit per month
     
+    # AI Categorization Service
+    AI_SIMILARITY_THRESHOLD: float = 0.75  # Threshold dla fuzzy search (zwiększony z 0.6)
+    AI_MIN_WORD_LENGTH_STRICT: int = 5  # Dla słów krótszych niż 5, wymagany wyższy threshold
+    AI_STRICT_THRESHOLD: float = 0.9  # Threshold dla krótkich słów
+    AI_FALLBACK_CATEGORY_NAME: str = "Inne"  # Nazwa kategorii fallback
+    
     # Celery
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
     CELERY_RESULT_BACKEND: str = "rpc://"

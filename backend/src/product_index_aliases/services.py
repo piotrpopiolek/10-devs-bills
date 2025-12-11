@@ -1,5 +1,7 @@
 from typing import Optional
-from sqlalchemy import select, func
+from datetime import datetime
+from sqlalchemy import select, func, insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,4 +133,67 @@ class ProductIndexAliasService(AppService[ProductIndexAlias, ProductIndexAliasCr
         except IntegrityError as e:
             await self.session.rollback()
             raise e
+
+    async def upsert_alias(
+        self,
+        raw_name: str,
+        index_id: int,
+        shop_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        locale: str = "pl_PL"
+    ) -> ProductIndexAlias:
+        """
+        Atomowo tworzy lub aktualizuje alias produktu używając wzorca UPSERT.
+        
+        Dlaczego UPSERT zamiast "Check-then-Act"?
+        - W środowisku async (FastAPI + SQLAlchemy) nie możemy polegać na SELECT-then-INSERT,
+          bo między tymi operacjami inna transakcja może wstawić ten sam rekord (race condition).
+        - PostgreSQL UPSERT gwarantuje atomowość i rozwiązuje konflikt na poziomie bazy.
+        
+        Strategia UPSERT:
+        1. Próbuje INSERT z podanymi danymi
+        2. Jeśli konflikt (ten sam raw_name + index_id już istnieje):
+           - Zwiększa confirmations_count o 1
+           - Aktualizuje last_seen_at
+        3. Zwraca utworzony lub zaktualizowany rekord
+        
+        Args:
+            raw_name: Surowy tekst z OCR (np. "Mleko 3.2%")
+            index_id: ID znormalizowanego produktu z ProductIndex
+            shop_id: ID sklepu (opcjonalne, dla kontekstu user+shop)
+            user_id: ID użytkownika (opcjonalne, dla kontekstu user+shop)
+            locale: Locale aliasu (domyślnie "pl_PL")
+            
+        Returns:
+            ProductIndexAlias: Utworzony lub zaktualizowany alias
+            
+        Raises:
+            IntegrityError: W przypadku naruszenia FK (product_index_id nie istnieje)
+        """
+        # PostgreSQL-specific UPSERT (INSERT ... ON CONFLICT ... DO UPDATE)
+        stmt = pg_insert(ProductIndexAlias).values(
+            raw_name=raw_name,
+            index_id=index_id,
+            shop_id=shop_id,
+            user_id=user_id,
+            locale=locale,
+            confirmations_count=1,
+            first_seen_at=datetime.utcnow()
+        ).on_conflict_do_update(
+            # Konflikt na: LOWER(raw_name) + index_id (zgodnie z uq_alias_raw_name_index)
+            index_elements=[func.lower(ProductIndexAlias.raw_name), ProductIndexAlias.index_id],
+            set_={
+                "confirmations_count": ProductIndexAlias.confirmations_count + 1,
+                "last_seen_at": datetime.utcnow()
+            }
+        ).returning(ProductIndexAlias)
+        
+        result = await self.session.execute(stmt)
+        alias = result.scalar_one()
+        
+        # Commit transaction
+        await self.session.commit()
+        await self.session.refresh(alias)
+        
+        return alias
 

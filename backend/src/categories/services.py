@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from src.categories.exceptions import (
     CategoryCycleError,
     CategoryHasChildrenError
 )
+from src.config import settings
 
 class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
     def __init__(self, session: AsyncSession):
@@ -107,3 +108,22 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
         stmt = select(cte.c.id).where(cte.c.id == ancestor_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
+
+    async def get_fallback_category(self) -> Category:
+        """
+        Zwraca kategorię domyślną (fallback) używaną dla nieznanych produktów.
+        
+        Strategia:
+        1. Próbuje znaleźć kategorię po nazwie z configu (AI_FALLBACK_CATEGORY_NAME)
+        
+        Returns:
+            Category: Kategoria domyślna (np. "Inne")
+
+        """
+        fallback_name = settings.AI_FALLBACK_CATEGORY_NAME
+            
+        stmt = select(Category).where(func.lower(Category.name) == func.lower(fallback_name))
+        result = await self.session.execute(stmt)
+        category = result.scalar_one_or_none()
+            
+        return category
