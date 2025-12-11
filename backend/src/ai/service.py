@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+import google.generativeai as genai
 
 from src.config import settings
 from src.ai.schemas import NormalizedItem
@@ -16,7 +17,7 @@ from src.product_indexes.services import ProductIndexService
 from src.product_index_aliases.services import ProductIndexAliasService
 from src.categories.services import CategoryService
 from src.categories.models import Category
- import google.generativeai as genai
+
 logger = logging.getLogger(__name__)
 
 

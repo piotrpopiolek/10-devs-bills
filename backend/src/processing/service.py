@@ -5,7 +5,7 @@ Orchestrates the complete bill processing pipeline from file download to databas
 """
 import logging
 from io import BytesIO
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 
@@ -23,7 +23,9 @@ from src.bill_items.schemas import BillItemCreate
 from src.shops.services import ShopService
 from src.storage.service import StorageService
 from src.ocr.services import OCRService
-from src.ocr.schemas import OCRReceiptData
+from src.ocr.schemas import OCRReceiptData, OCRItem
+from src.ai.service import AICategorizationService
+from src.ai.schemas import NormalizedItem
 from src.processing.exceptions import ProcessingError
 
 logger = logging.getLogger(__name__)
@@ -101,17 +103,35 @@ class BillsProcessorService:
                 ocr_data.shop_address
             )
 
-            # Step 6: Create BillItems
-            await self._create_bill_items(bill_id, ocr_data)
+            # Step 6: AI Categorization & Normalization (POZA transakcją DB)
+            # KRYTYCZNE: Wywołania Gemini API (w AI service) muszą być PRZED session.begin()
+            # Serwis AI może używać własnych krótkich transakcji do odczytu (read-only),
+            # ale nie powinien blokować połączenia czekając na Gemini.
+            normalized_items = await self._normalize_items(
+                ocr_data.items,
+                shop_id=shop_id,
+                shop_name=ocr_data.shop_name,
+                user_id=bill.user_id
+            )
 
-            # Step 7: Determine final status based on validation
+            # Step 7: Create BillItems (wewnątrz transakcji - szybka operacja)
+            async with self.session.begin():
+                await self._create_bill_items(bill_id, normalized_items)
+
+            # Step 8: Determine final status based on validation
+            # Sprawdzamy czy jakikolwiek item wymaga weryfikacji
+            requires_verification = any(
+                not item.is_confident or item.confidence_score < 0.8
+                for item in normalized_items
+            )
+            
             final_status = (
                 ProcessingStatus.TO_VERIFY 
-                if ocr_data.requires_verification 
+                if requires_verification 
                 else ProcessingStatus.COMPLETED
             )
 
-            # Step 8: Update Bill with final data
+            # Step 9: Update Bill with final data
             await self._update_bill_completed(
                 bill_id,
                 total_amount=ocr_data.total_amount,
@@ -227,63 +247,88 @@ class BillsProcessorService:
             logger.warning(f"Continuing without shop_id due to error: {e}")
             return None
 
-    async def _create_bill_items(self, bill_id: int, ocr_data: OCRReceiptData) -> None:
+    async def _normalize_items(
+        self,
+        ocr_items: List[OCRItem],
+        shop_id: Optional[int] = None,
+        shop_name: Optional[str] = None,
+        user_id: Optional[int] = None
+    ) -> List[NormalizedItem]:
         """
-        Create BillItems from OCR data.
-        Validates data via Pydantic before DB insertion.
+        Normalizuje pozycje OCR używając AI Categorization Service.
         
-        Items with negative prices (discounts/rebates) are automatically marked
-        as requiring verification (is_verified=False) so user can review and correct them.
+        KRYTYCZNE: Ta metoda jest wywoływana POZA transakcją DB!
+        - Wywołania Gemini API mogą trwać sekundy
+        - Nie blokujemy połączenia DB podczas wywołań zewnętrznych API
+        
+        Most Koncepcyjny (PHP → Python):
+        W Symfony/Laravel (synchroniczne) nie ma problemu z blokowaniem połączenia,
+        bo każde żądanie ma dedykowane połączenie (FPM model).
+        W async Pythonie połączenia są współdzielone (connection pool),
+        więc długie operacje w transakcji mogą spowodować deadlock.
+        
+        Args:
+            ocr_items: Lista pozycji z OCR
+            shop_id: ID sklepu (dla kontekstu aliasów)
+            shop_name: Nazwa sklepu (dla kontekstu AI Categorization)
+            user_id: ID użytkownika (dla kontekstu aliasów)
+            
+        Returns:
+            List[NormalizedItem]: Lista znormalizowanych pozycji gotowych do zapisu
         """
-        if not ocr_data.items:
-            logger.warning(f"No items in OCR data for bill_id={bill_id}")
+        normalized_items = []
+        
+        for ocr_item in ocr_items:
+            try:
+                normalized_item = await self.ai_service.normalize_item(
+                    ocr_item=ocr_item,
+                    shop_id=shop_id,
+                    shop_name=shop_name,
+                    user_id=user_id,
+                    save_alias=True  # Uczenie się systemu - zapis aliasów
+                )
+                normalized_items.append(normalized_item)
+            except Exception as e:
+                logger.error(
+                    f"Failed to normalize item '{ocr_item.name}': {e}",
+                    exc_info=True
+                )
+                # Continue with other items even if one fails
+                # Fallback: użyj surowych danych z OCR (bez normalizacji)
+                continue
+        
+        logger.info(f"Normalized {len(normalized_items)}/{len(ocr_items)} items")
+        return normalized_items
+
+    async def _create_bill_items(self, bill_id: int, items: List[NormalizedItem]) -> None:
+        """
+        Tworzy BillItems z znormalizowanych pozycji.
+        
+        Przyjmuje już znormalizowane i przeliczone obiekty NormalizedItem.
+        Tylko mapuje na model DB (BillItemCreate) i zapisuje.
+        
+        Logika biznesowa (wyliczanie cen, walidacja) została przeniesiona do AI serwisu.
+        
+        Most Koncepcyjny (PHP → Python):
+        W Symfony/Laravel używałbyś Data Transformer lub Mapper (np. Symfony Form Data Transformers).
+        W Pythonie mamy prosty mapper jako metodę prywatną - idiomatyczne i czytelne.
+        
+        Args:
+            bill_id: ID paragonu
+            items: Lista znormalizowanych pozycji (NormalizedItem)
+        """
+        if not items:
+            logger.warning(f"No normalized items for bill_id={bill_id}")
             return
 
         created_count = 0
-        for ocr_item in ocr_data.items:
+        for normalized_item in items:
             try:
-                # Items with negative prices always require verification
-                # (discounts, rebates, returns - user should review these)
-                has_negative_price = ocr_item.total_price < 0
-                
-                # Determine if item needs verification
-                # - Negative prices always need verification
-                # - Low confidence also requires verification
-                needs_verification = (
-                    has_negative_price or 
-                    ocr_item.confidence_score < 0.8
-                )
-
-                # Calculate unit_price if not provided
-                unit_price = ocr_item.unit_price
-                if unit_price is None:
-                    # Calculate from total_price and quantity
-                    if ocr_item.quantity > 0:
-                        unit_price = ocr_item.total_price / ocr_item.quantity
-                    else:
-                        logger.warning(
-                            f"Invalid quantity for item {ocr_item.name}: {ocr_item.quantity}, "
-                            f"skipping bill_item creation"
-                        )
-                        continue
-
-                # Log negative prices for monitoring
-                if has_negative_price:
-                    logger.info(
-                        f"Item with negative price detected (will require verification) for bill_id={bill_id}: "
-                        f"{ocr_item.name} ({ocr_item.total_price} PLN)"
-                    )
-
-                # Pydantic validation (BillItemCreate now allows negative prices)
-                bill_item_data = BillItemCreate(
+                # Mapowanie NormalizedItem -> BillItemCreate
+                # NormalizedItem już ma przeliczone ceny i walidację
+                bill_item_data = self._map_normalized_to_bill_item(
                     bill_id=bill_id,
-                    quantity=ocr_item.quantity,
-                    unit_price=unit_price,
-                    total_price=ocr_item.total_price,
-                    original_text=ocr_item.name,
-                    confidence_score=Decimal(str(ocr_item.confidence_score)),
-                    is_verified=not needs_verification,  # False if negative price or low confidence
-                    verification_source=VerificationSource.AUTO
+                    normalized_item=normalized_item
                 )
 
                 await self.bill_item_service.create(bill_item_data)
@@ -292,13 +337,83 @@ class BillsProcessorService:
             except Exception as e:
                 logger.error(
                     f"Failed to create bill_item for bill_id={bill_id}, "
-                    f"item={ocr_item.name}: {e}",
+                    f"item={normalized_item.original_text}: {e}",
                     exc_info=True
                 )
                 # Continue with other items even if one fails
                 continue
 
-        logger.info(f"Created {created_count}/{len(ocr_data.items)} bill_items for bill_id={bill_id}")
+        logger.info(f"Created {created_count}/{len(items)} bill_items for bill_id={bill_id}")
+
+    def _map_normalized_to_bill_item(
+        self,
+        bill_id: int,
+        normalized_item: NormalizedItem
+    ) -> BillItemCreate:
+        """
+        Mapuje NormalizedItem na BillItemCreate.
+        
+        Logika biznesowa:
+        - Items with negative prices always require verification (discounts/rebates)
+        - Low confidence (< 0.8) also requires verification
+        - NormalizedItem już ma przeliczone unit_price i total_price
+        
+        Args:
+            bill_id: ID paragonu
+            normalized_item: Znormalizowana pozycja z AI service
+            
+        Returns:
+            BillItemCreate: Gotowy do zapisu w DB
+        """
+        # Items with negative prices always require verification
+        has_negative_price = normalized_item.total_price < 0
+        
+        # Determine if item needs verification
+        # - Negative prices always need verification
+        # - Low confidence also requires verification
+        needs_verification = (
+            has_negative_price or 
+            not normalized_item.is_confident or
+            normalized_item.confidence_score < 0.8
+        )
+
+        # Log negative prices for monitoring
+        if has_negative_price:
+            logger.info(
+                f"Item with negative price detected (will require verification) for bill_id={bill_id}: "
+                f"{normalized_item.original_text} ({normalized_item.total_price} PLN)"
+            )
+
+        # Walidacja: quantity musi być > 0
+        if normalized_item.quantity <= 0:
+            raise ValueError(
+                f"Invalid quantity for item {normalized_item.original_text}: "
+                f"{normalized_item.quantity}"
+            )
+
+        # NormalizedItem już ma przeliczone ceny (unit_price, total_price)
+        # Jeśli unit_price jest None, obliczamy z total_price / quantity
+        unit_price = normalized_item.unit_price
+        if unit_price is None or unit_price == 0:
+            if normalized_item.quantity > 0:
+                unit_price = normalized_item.total_price / normalized_item.quantity
+            else:
+                raise ValueError(
+                    f"Cannot calculate unit_price for item {normalized_item.original_text}: "
+                    f"quantity={normalized_item.quantity}, total_price={normalized_item.total_price}"
+                )
+
+        return BillItemCreate(
+            bill_id=bill_id,
+            quantity=normalized_item.quantity,
+            unit_price=unit_price,
+            total_price=normalized_item.total_price,
+            original_text=normalized_item.original_text,
+            confidence_score=Decimal(str(normalized_item.confidence_score)),
+            is_verified=not needs_verification,  # False if negative price or low confidence
+            verification_source=VerificationSource.AUTO,
+            index_id=normalized_item.product_index_id  # FK do ProductIndex (nullable)
+        )
 
     async def _update_bill_completed(
         self,
