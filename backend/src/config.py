@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     AI_CATEGORIZATION_TEMPERATURE: float = 0.3  # Temperatura dla Gemini (niższa = bardziej deterministyczne)
     
     # Product Learning Service
-    PRODUCT_INDEX_ACCEPTANCE_THRESHOLD: int = 10  # Liczba wymaganych potwierdzeń użytkowników dla utworzenia ProductIndex
+    PRODUCT_INDEX_ACCEPTANCE_THRESHOLD: int = 3  # Liczba wymaganych potwierdzeń użytkowników dla utworzenia ProductIndex
     FUZZY_MATCH_GROUPING_THRESHOLD: float = 0.85  # Próg podobieństwa dla grupowania nazw w product_candidates
     
     # Celery

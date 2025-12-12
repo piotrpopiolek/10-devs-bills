@@ -50,12 +50,15 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
         return
     
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
     async with get_or_create_session() as session:
         auth_service = AuthService(session)
         
         # Generate magic link
         try:
-            magic_link, url = await auth_service.create_magic_link_for_user(user.id)
+            magic_link, url = await auth_service.create_magic_link_for_user(user_id)
             await update.message.reply_text(
                 f"Oto Twój link do logowania (ważny 30 min):\n{url}",
                 disable_web_page_preview=True
@@ -80,6 +83,138 @@ async def monthly_report_command(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text("Raport miesięczny - funkcja w przygotowaniu.")
 
 
+async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle /verify command with bill_id argument.
+    Allows manual start of bill verification process.
+    
+    Usage: /verify {bill_id}
+    
+    Most Koncepcyjny (PHP → Python):
+    W Symfony/Laravel używałbyś Command z argumentami (Symfony Console lub Artisan).
+    W python-telegram-bot argumenty są dostępne przez context.args - idiomatyczne
+    podejście dla botów Telegram, gdzie argumenty są przekazywane jako lista stringów.
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
+    
+    # Parse bill_id from command arguments
+    # context.args contains list of arguments after command (e.g., ["136"] for "/verify 136")
+    if not context.args or len(context.args) == 0:
+        await update.message.reply_text(
+            "⚠️ Nieprawidłowe użycie komendy.\n\n"
+            "Użycie: /verify {bill_id}\n"
+            "Przykład: /verify 136"
+        )
+        return
+    
+    # Validate bill_id is a number
+    try:
+        bill_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ ID rachunku musi być liczbą.\n\n"
+            "Użycie: /verify {bill_id}\n"
+            "Przykład: /verify 136"
+        )
+        return
+    
+    # Validate bill_id is positive
+    if bill_id <= 0:
+        await update.message.reply_text(
+            "⚠️ ID rachunku musi być liczbą dodatnią."
+        )
+        return
+    
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
+    async with get_or_create_session() as session:
+        try:
+            # Verify bill exists and belongs to user
+            verification_service = await get_bill_verification_service(session=session)
+            
+            # Check if bill exists and user has access (via get_unverified_items which checks ownership)
+            unverified_items = await verification_service.get_unverified_items(
+                bill_id=bill_id,
+                user_id=user_id
+            )
+            
+            # Check bill status
+            stmt = select(Bill).where(Bill.id == bill_id)
+            result = await session.execute(stmt)
+            bill = result.scalar_one_or_none()
+            
+            if not bill:
+                await update.message.reply_text(
+                    f"⚠️ Rachunek o ID {bill_id} nie został znaleziony."
+                )
+                return
+            
+            # Check if bill belongs to user (double check)
+            if bill.user_id != user_id:
+                await update.message.reply_text(
+                    f"⚠️ Nie masz dostępu do rachunku o ID {bill_id}."
+                )
+                return
+            
+            # Check if bill is in correct status
+            if bill.status == ProcessingStatus.COMPLETED:
+                await update.message.reply_text(
+                    f"✅ Rachunek o ID {bill_id} został już w pełni przetworzony.\n"
+                    f"Wszystkie pozycje zostały zweryfikowane."
+                )
+                return
+            
+            if bill.status == ProcessingStatus.ERROR:
+                await update.message.reply_text(
+                    f"⚠️ Rachunek o ID {bill_id} ma status błędu.\n"
+                    f"Nie można rozpocząć weryfikacji."
+                )
+                return
+            
+            if bill.status == ProcessingStatus.PENDING or bill.status == ProcessingStatus.PROCESSING:
+                await update.message.reply_text(
+                    f"⏳ Rachunek o ID {bill_id} jest w trakcie przetwarzania.\n"
+                    f"Poczekaj na zakończenie przetwarzania przed weryfikacją."
+                )
+                return
+            
+            # Check if there are items to verify
+            if not unverified_items:
+                await update.message.reply_text(
+                    f"✅ Rachunek o ID {bill_id} nie ma pozycji wymagających weryfikacji.\n"
+                    f"Wszystkie pozycje zostały już zweryfikowane."
+                )
+                return
+            
+            # Start verification process
+            await update.message.reply_text(
+                f"🔍 Rozpoczynam weryfikację rachunku ID: {bill_id}..."
+            )
+            
+            # Use existing start_bill_verification function
+            # Pass user_id to avoid lazy-loading issues when accessing user.id
+            await start_bill_verification(update, context, bill_id, user_id)
+            
+        except ResourceNotFoundError:
+            await update.message.reply_text(
+                f"⚠️ Rachunek o ID {bill_id} nie został znaleziony."
+            )
+        except Exception as e:
+            logger.error(f"Error in verify_command for bill_id={bill_id}: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"⚠️ Wystąpił błąd podczas rozpoczynania weryfikacji.\n"
+                f"Spróbuj ponownie później lub skontaktuj się z supportem."
+            )
+
+
 async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle incoming receipt images.
@@ -94,6 +229,9 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
         return
     
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
     # Notify user we are processing
     status_message = await update.message.reply_text("Przetwarzam zdjęcie...")
     
@@ -106,7 +244,7 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         bill_service = BillService(session, storage_service)
         
         # User is already retrieved from context (middleware)
-        logger.info(f"User for Telegram ID {update.effective_user.id}: {user.id}")
+        logger.info(f"User for Telegram ID {update.effective_user.id}: {user_id}")
 
         # TODO: Check user receipt limit (Freemium Model F-09)
         # if user.receipts_count >= 100: ...
@@ -136,12 +274,12 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
             # Note: storage_service should ideally be async to avoid blocking the event loop
             image_url, image_hash = await storage_service.upload_file_content(
                 file_content=bytes(file_content),
-                user_id=user.id,
+                user_id=user_id,
                 extension=extension
             )
             
             # Check for duplicate bills with same image_hash
-            stmt = select(Bill).where(Bill.image_hash == image_hash).where(Bill.user_id == user.id).order_by(Bill.id.desc())
+            stmt = select(Bill).where(Bill.image_hash == image_hash).where(Bill.user_id == user_id).order_by(Bill.id.desc())
             result = await session.execute(stmt)
             existing_bills = list(result.scalars().all())  # Convert to list to ensure it's evaluated
             
@@ -192,7 +330,7 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                 
                 bill = await bill_service.create(BillCreate(
                     bill_date=bill_date,
-                    user_id=user.id,
+                    user_id=user_id,
                     image_url=image_url, # We store the internal storage path here
                     image_hash=image_hash,
                     image_expires_at=storage_service.calculate_expiration_date(),
@@ -250,7 +388,8 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                     
                     # Automatycznie rozpocznij proces weryfikacji
-                    await start_bill_verification(update, context, bill.id)
+                    # Pass user_id to avoid lazy-loading issues when accessing user.id
+                    await start_bill_verification(update, context, bill.id, user_id)
                 else:
                     # Status PROCESSING (nie powinno się zdarzyć, ale na wszelki wypadek)
                     await status_message.edit_text(
@@ -279,7 +418,8 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
 async def start_bill_verification(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    bill_id: int
+    bill_id: int,
+    user_id: int
 ):
     """
     Rozpoczyna proces weryfikacji rachunku.
@@ -289,13 +429,9 @@ async def start_bill_verification(
         update: Telegram Update object
         context: Telegram context
         bill_id: ID rachunku do weryfikacji
+        user_id: ID użytkownika (musi być przekazane, aby uniknąć problemów z lazy-loading)
     """
     if not update.effective_user:
-        return
-    
-    user = get_user()
-    if not user:
-        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
         return
     
     async with get_or_create_session() as session:
@@ -305,7 +441,7 @@ async def start_bill_verification(
             # Pobierz wszystkie pozycje wymagające weryfikacji
             unverified_items = await verification_service.get_unverified_items(
                 bill_id=bill_id,
-                user_id=user.id
+                user_id=user_id
             )
             
             if not unverified_items:
@@ -355,7 +491,7 @@ async def start_bill_verification(
             }
             
             logger.info(
-                f"Started verification for bill_id={bill_id}, user_id={user.id}. "
+                f"Started verification for bill_id={bill_id}, user_id={user_id}. "
                 f"Total items to verify: {total_items}"
             )
             
@@ -387,6 +523,9 @@ async def handle_item_verification_callback(
         logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
         await query.edit_message_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
         return
+    
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
     
     # Parsuj callback_data: "verify:{action}:{bill_item_id}"
     try:
@@ -422,7 +561,7 @@ async def handle_item_verification_callback(
                 # Zatwierdź pozycję
                 await verification_service.verify_item(
                     bill_item_id=bill_item_id,
-                    user_id=user.id
+                    user_id=user_id
                 )
                 await query.edit_message_text("✅ Pozycja zatwierdzona!")
                 
@@ -430,7 +569,7 @@ async def handle_item_verification_callback(
                 # Pomiń pozycję
                 await verification_service.skip_item(
                     bill_item_id=bill_item_id,
-                    user_id=user.id
+                    user_id=user_id
                 )
                 await query.edit_message_text("⏭️ Pozycja pominięta.")
                 
@@ -449,15 +588,11 @@ async def handle_item_verification_callback(
                 await query.edit_message_text("⚠️ Nieznana akcja.")
                 return
             
-            # Pobierz następną pozycję
-            unverified_item_ids = verification_state.get('unverified_item_ids', [])
-            if bill_item_id in unverified_item_ids:
-                unverified_item_ids.remove(bill_item_id)
-            
+            # Pobierz następną pozycję (bez exclude_item_ids - pozycja już zweryfikowana ma is_verified=True)
             next_item = await verification_service.get_next_unverified_item(
                 bill_id=bill_id,
-                user_id=user.id,
-                exclude_item_ids=unverified_item_ids
+                user_id=user_id,
+                exclude_item_ids=None
             )
             
             if next_item:
@@ -470,14 +605,23 @@ async def handle_item_verification_callback(
                 result = await session.execute(stmt)
                 item_with_relations = result.scalar_one()
                 
-                # Pobierz wszystkie pozycje do licznika
+                # Pobierz wszystkie pozycje do licznika (aktualne, po weryfikacji)
                 all_unverified = await verification_service.get_unverified_items(
                     bill_id=bill_id,
-                    user_id=user.id
+                    user_id=user_id
                 )
                 
-                current_index = len(unverified_item_ids) - len(all_unverified) + 1
-                total_items = len(all_unverified) + (len(unverified_item_ids) - len(all_unverified))
+                # Oblicz aktualny numer pozycji i całkowitą liczbę
+                # Pobierz wszystkie pozycje z rachunku (do obliczenia całkowitej liczby)
+                bill_stmt = select(Bill).where(Bill.id == bill_id).options(selectinload(Bill.bill_items))
+                bill_result = await session.execute(bill_stmt)
+                bill = bill_result.scalar_one()
+                total_items_count = len(bill.bill_items) if bill.bill_items else 0
+                
+                # Oblicz ile pozycji zostało już zweryfikowanych
+                verified_count = total_items_count - len(all_unverified)
+                current_index = verified_count + 1
+                total_items = total_items_count
                 
                 # Formatuj wiadomość
                 message_text = format_bill_item_for_verification(
@@ -496,14 +640,14 @@ async def handle_item_verification_callback(
                     reply_markup=keyboard
                 )
                 
-                # Zaktualizuj stan
-                verification_state['unverified_item_ids'] = unverified_item_ids
+                # Zaktualizuj stan (zachowaj bill_id dla kolejnych weryfikacji)
+                verification_state['bill_id'] = bill_id
                 context.user_data['verification'] = verification_state
             else:
                 # Sprawdź czy wszystkie pozycje zostały zweryfikowane
-                if await verification_service.check_all_items_verified(bill_id, user.id):
+                if await verification_service.check_all_items_verified(bill_id, user_id):
                     # Finalizuj weryfikację
-                    await verification_service.finalize_verification(bill_id, user.id)
+                    await verification_service.finalize_verification(bill_id, user_id)
                     
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
@@ -550,6 +694,9 @@ async def handle_item_edit_text(
         logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
         return
     
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
     # Sprawdź czy to komenda /cancel
     if update.message.text and update.message.text.strip().lower() == "/cancel":
         verification_state['editing_item_id'] = None
@@ -570,7 +717,7 @@ async def handle_item_edit_text(
             # Weryfikuj pozycję z edytowanym tekstem
             verified_item = await verification_service.verify_item(
                 bill_item_id=editing_item_id,
-                user_id=user.id,
+                user_id=user_id,
                 edited_text=edited_text
             )
             
@@ -581,15 +728,11 @@ async def handle_item_edit_text(
             bill_id = verification_state.get('bill_id')
             
             if bill_id:
-                # Pobierz następną pozycję
-                unverified_item_ids = verification_state.get('unverified_item_ids', [])
-                if editing_item_id in unverified_item_ids:
-                    unverified_item_ids.remove(editing_item_id)
-                
+                # Pobierz następną pozycję (bez exclude_item_ids - pozycja już zweryfikowana ma is_verified=True)
                 next_item = await verification_service.get_next_unverified_item(
                     bill_id=bill_id,
-                    user_id=user.id,
-                    exclude_item_ids=unverified_item_ids
+                    user_id=user_id,
+                    exclude_item_ids=None
                 )
                 
                 if next_item:
@@ -602,14 +745,23 @@ async def handle_item_edit_text(
                     result = await session.execute(stmt)
                     item_with_relations = result.scalar_one()
                     
-                    # Pobierz wszystkie pozycje do licznika
+                    # Pobierz wszystkie pozycje do licznika (aktualne, po weryfikacji)
                     all_unverified = await verification_service.get_unverified_items(
                         bill_id=bill_id,
-                        user_id=user.id
+                        user_id=user_id
                     )
                     
-                    current_index = len(unverified_item_ids) - len(all_unverified) + 1
-                    total_items = len(all_unverified) + (len(unverified_item_ids) - len(all_unverified))
+                    # Oblicz aktualny numer pozycji i całkowitą liczbę
+                    # Pobierz wszystkie pozycje z rachunku (do obliczenia całkowitej liczby)
+                    bill_stmt = select(Bill).where(Bill.id == bill_id).options(selectinload(Bill.bill_items))
+                    bill_result = await session.execute(bill_stmt)
+                    bill = bill_result.scalar_one()
+                    total_items_count = len(bill.bill_items) if bill.bill_items else 0
+                    
+                    # Oblicz ile pozycji zostało już zweryfikowanych
+                    verified_count = total_items_count - len(all_unverified)
+                    current_index = verified_count + 1
+                    total_items = total_items_count
                     
                     # Formatuj wiadomość
                     message_text = format_bill_item_for_verification(
@@ -628,14 +780,14 @@ async def handle_item_edit_text(
                         reply_markup=keyboard
                     )
                     
-                    # Zaktualizuj stan
-                    verification_state['unverified_item_ids'] = unverified_item_ids
+                    # Zaktualizuj stan (zachowaj bill_id dla kolejnych weryfikacji)
+                    verification_state['bill_id'] = bill_id
                     context.user_data['verification'] = verification_state
                 else:
                     # Sprawdź czy wszystkie pozycje zostały zweryfikowane
-                    if await verification_service.check_all_items_verified(bill_id, user.id):
+                    if await verification_service.check_all_items_verified(bill_id, user_id):
                         # Finalizuj weryfikację
-                        await verification_service.finalize_verification(bill_id, user.id)
+                        await verification_service.finalize_verification(bill_id, user_id)
                         
                         await context.bot.send_message(
                             chat_id=update.effective_chat.id,

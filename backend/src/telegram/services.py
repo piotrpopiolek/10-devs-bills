@@ -63,6 +63,7 @@ class TelegramBotService:
         app.add_handler(CommandHandler("dzis", handlers.daily_report_command))
         app.add_handler(CommandHandler("tydzien", handlers.weekly_report_command))
         app.add_handler(CommandHandler("miesiac", handlers.monthly_report_command))
+        app.add_handler(CommandHandler("verify", handlers.verify_command))
         
         # Handle photos (receipts)
         app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handlers.handle_receipt_image))
