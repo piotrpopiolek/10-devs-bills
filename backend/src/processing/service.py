@@ -274,6 +274,7 @@ class BillsProcessorService:
         await self.session.commit()
         
         rows_updated = result.rowcount
+        
         if rows_updated > 0:
             logger.info(f"Acquired processing lock for bill_id={bill_id}")
             return True
