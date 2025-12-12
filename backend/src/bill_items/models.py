@@ -71,5 +71,5 @@ class BillItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     bill: Mapped['Bill'] = relationship('Bill', back_populates='bill_items')
     index: Mapped[Optional['ProductIndex']] = relationship('ProductIndex', back_populates='bill_items')
-    category_id: Mapped[int] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=False)
-    category: Mapped['Category'] = relationship('Category', back_populates='bill_items_categorized')
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=True)
+    category: Mapped[Optional['Category']] = relationship('Category', back_populates='bill_items_categorized')
