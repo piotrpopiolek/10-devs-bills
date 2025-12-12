@@ -137,52 +137,73 @@ class BillsProcessorService:
                     f"confidence={normalized_item.confidence_score:.2f}, is_confident={normalized_item.is_confident}"
                 )
 
-            logger.info(f"Updating bill {bill_id} status to COMPLETED")
-            await self.bill_service.update(bill_id, BillUpdate(status=ProcessingStatus.COMPLETED), bill.user_id)
-
             # # Step 7: Create BillItems
             # # Uwaga: BillItemService.create() wykonuje własny commit(), więc nie używamy session.begin()
             # # Most Koncepcyjny (PHP → Python): W Symfony/Laravel, Doctrine/Eloquent automatycznie
             # # zarządza transakcjami przez EntityManager/DB facade. W SQLAlchemy async, każdy serwis
             # # wykonuje własne commit(), co jest idiomatyczne dla async SQLAlchemy (connection pooling).
-            # await self._create_bill_items(bill_id, normalized_items)
+            await self._create_bill_items(bill_id, normalized_items)
 
-            # # Step 8: Determine final status based on validation
-            # # Sprawdzamy czy jakikolwiek item wymaga weryfikacji
-            # requires_verification = any(
-            #     not item.is_confident or item.confidence_score < 0.8
-            #     for item in normalized_items
-            # )
+            # Step 8: Determine final status based on validation
+            # Sprawdzamy czy jakikolwiek item wymaga weryfikacji
+            requires_verification = any(
+                not item.is_confident or item.confidence_score < 0.8
+                for item in normalized_items
+            )
             
-            # final_status = (
-            #     ProcessingStatus.TO_VERIFY 
-            #     if requires_verification 
-            #     else ProcessingStatus.COMPLETED
-            # )
+            final_status = (
+                ProcessingStatus.TO_VERIFY 
+                if requires_verification 
+                else ProcessingStatus.COMPLETED
+            )
 
-            # # Step 9: Update Bill with final data
-            # await self._update_bill_completed(
-            #     bill_id,
-            #     total_amount=ocr_data.total_amount,
-            #     shop_id=shop_id,
-            #     bill_date=ocr_data.date or bill.bill_date,
-            #     status=final_status
-            # )
+            # Step 9: Update Bill with final data
+            # #region agent log
+            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                import json
+                import time
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"service.py:161","message":"Before _update_bill_completed","data":{"bill_id":bill_id,"final_status":final_status.value},"timestamp":int(time.time()*1000)})+'\n')
+            # #endregion
+            await self._update_bill_completed(
+                bill_id,
+                total_amount=ocr_data.total_amount,
+                shop_id=shop_id,
+                bill_date=ocr_data.date or bill.bill_date,
+                status=final_status
+            )
+            # #region agent log
+            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"service.py:169","message":"After _update_bill_completed","data":{"bill_id":bill_id,"final_status":final_status.value},"timestamp":int(time.time()*1000)})+'\n')
+            # #endregion
 
-            # logger.info(
-            #     f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
-            #     extra={
-            #         "status": final_status.value,
-            #         "requires_verification": ocr_data.requires_verification
-            #     }
-            # )
+            logger.info(
+                f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
+                extra={
+                    "status": final_status.value,
+                    "requires_verification": ocr_data.requires_verification
+                }
+            )
 
         except Exception as e:
+            # #region agent log
+            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                import json
+                import time
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:177","message":"Exception in process_receipt","data":{"bill_id":bill_id,"error":str(e),"error_type":type(e).__name__},"timestamp":int(time.time()*1000)})+'\n')
+            # #endregion
             logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
             # Try to save error state
             try:
                 await self._set_error(bill_id, str(e))
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:182","message":"Error status set successfully","data":{"bill_id":bill_id},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
             except Exception as inner_e:
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:185","message":"Failed to set error status","data":{"bill_id":bill_id,"inner_error":str(inner_e)},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
                 logger.critical(f"CRITICAL: Failed to save error status for bill {bill_id}: {inner_e}", exc_info=True)
             
             # Re-raise to let caller know something went wrong

@@ -155,12 +155,29 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
             
             # Trigger bill processing via BillsProcessorService
             try:
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    import json
+                    import time
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"handlers.py:160","message":"Before process_receipt","data":{"bill_id":bill.id,"bill_status":bill.status.value},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
+                
                 # Get processor via factory function (DI pattern)
                 # Session jest już dostępny z 'async with get_or_create_session() as session:'
                 processor = await get_bills_processor_service(session=session)
                 
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"handlers.py:165","message":"Calling process_receipt","data":{"bill_id":bill.id},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
+                
                 # Process receipt (OCR → AI → Database)
                 await processor.process_receipt(bill.id)
+                
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"handlers.py:170","message":"After process_receipt (no exception)","data":{"bill_id":bill.id},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
                 
                 # Pobierz zaktualizowany bill z relacjami do wyświetlenia statystyk
                 stmt = (
@@ -170,6 +187,11 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 result = await session.execute(stmt)
                 updated_bill = result.scalar_one()
+                
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"handlers.py:178","message":"Bill status after process_receipt","data":{"bill_id":bill.id,"status":updated_bill.status.value,"status_enum":str(updated_bill.status)},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
                 
                 # Sprawdź status i wyświetl odpowiedni komunikat
                 if updated_bill.status == ProcessingStatus.COMPLETED:
@@ -188,7 +210,28 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                         f"Błąd: {error_msg}\n"
                         f"Spróbuj ponownie później lub skontaktuj się z supportem."
                     )
+                elif updated_bill.status == ProcessingStatus.TO_VERIFY:
+                    # #region agent log
+                    with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                        import json
+                        import time
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"handlers.py:189","message":"Status TO_VERIFY detected","data":{"bill_id":bill.id},"timestamp":int(time.time()*1000)})+'\n')
+                    # #endregion
+                    items_count = len(updated_bill.bill_items) if updated_bill.bill_items else 0
+                    await status_message.edit_text(
+                        f"✅ Paragon przetworzony!\n"
+                        f"ID: {bill.id}\n"
+                        f"Znaleziono {items_count} pozycji.\n"
+                        f"Kwota: {updated_bill.total_amount:.2f} PLN\n"
+                        f"⚠️ Niektóre pozycje wymagają weryfikacji."
+                    )
                 else:
+                    # #region agent log
+                    with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                        import json
+                        import time
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"handlers.py:200","message":"Unexpected status - showing processing message","data":{"bill_id":bill.id,"status":updated_bill.status.value,"status_enum":str(updated_bill.status)},"timestamp":int(time.time()*1000)})+'\n')
+                    # #endregion
                     # Status PROCESSING (nie powinno się zdarzyć, ale na wszelki wypadek)
                     await status_message.edit_text(
                         f"⏳ Paragon w trakcie przetwarzania...\n"
@@ -196,6 +239,12 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                     
             except Exception as e:
+                # #region agent log
+                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    import json
+                    import time
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"handlers.py:205","message":"Exception in process_receipt","data":{"bill_id":bill.id,"error":str(e),"error_type":type(e).__name__},"timestamp":int(time.time()*1000)})+'\n')
+                # #endregion
                 logger.error(f"Error processing receipt bill_id={bill.id}: {e}", exc_info=True)
                 # Bill status will be ERROR (set by BillsProcessorService._set_error())
                 # Inform user about the error

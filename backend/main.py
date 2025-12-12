@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,22 @@ from src.users.routes import router as users_router
 from src.telegram.routes import router as telegram_router
 from src.telegram.services import TelegramBotService
 from src.ocr.routes import router as ocr_router
-from src.error_handler import exception_handler 
+from src.error_handler import exception_handler
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Set log level for application modules to INFO
+logging.getLogger('src').setLevel(logging.INFO)
+
+# Keep external libraries at WARNING to reduce noise
+logging.getLogger('uvicorn').setLevel(logging.WARNING)
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)  # Keep SQL logs visible 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
