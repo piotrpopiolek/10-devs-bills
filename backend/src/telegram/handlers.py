@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from telegram import Update
+from telegram import Update, CallbackQuery
 from telegram.ext import ContextTypes
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -10,10 +10,13 @@ from src.auth.services import AuthService
 from src.bills.models import Bill, ProcessingStatus
 from src.bills.schemas import BillCreate
 from src.bills.services import BillService
+from src.bill_items.models import BillItem
 from src.common.exceptions import ResourceNotFoundError
 from src.processing.dependencies import get_bills_processor_service
+from src.bills.dependencies import get_bill_verification_service
 from src.telegram.context import get_or_create_session, get_storage_service_for_telegram, get_user
 from src.telegram.error_mapping import get_user_message
+from src.telegram.utils import format_bill_item_for_verification, create_verification_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -235,13 +238,19 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 elif updated_bill.status == ProcessingStatus.TO_VERIFY:
                     items_count = len(updated_bill.bill_items) if updated_bill.bill_items else 0
+                    unverified_count = sum(1 for item in updated_bill.bill_items if not item.is_verified)
+                    
                     await status_message.edit_text(
                         f"✅ Paragon przetworzony!\n"
                         f"ID: {bill.id}\n"
                         f"Znaleziono {items_count} pozycji.\n"
                         f"Kwota: {updated_bill.total_amount:.2f} PLN\n"
-                        f"⚠️ Niektóre pozycje wymagają weryfikacji."
+                        f"⚠️ {unverified_count} pozycji wymaga weryfikacji.\n\n"
+                        f"Rozpoczynam weryfikację..."
                     )
+                    
+                    # Automatycznie rozpocznij proces weryfikacji
+                    await start_bill_verification(update, context, bill.id)
                 else:
                     # Status PROCESSING (nie powinno się zdarzyć, ale na wszelki wypadek)
                     await status_message.edit_text(
@@ -265,3 +274,386 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             logger.error(f"Error processing receipt: {e}", exc_info=True)
             await status_message.edit_text(get_user_message(e))
+
+
+async def start_bill_verification(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    bill_id: int
+):
+    """
+    Rozpoczyna proces weryfikacji rachunku.
+    Wysyła pierwszą pozycję wymagającą weryfikacji.
+    
+    Args:
+        update: Telegram Update object
+        context: Telegram context
+        bill_id: ID rachunku do weryfikacji
+    """
+    if not update.effective_user:
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        return
+    
+    async with get_or_create_session() as session:
+        try:
+            verification_service = await get_bill_verification_service(session=session)
+            
+            # Pobierz wszystkie pozycje wymagające weryfikacji
+            unverified_items = await verification_service.get_unverified_items(
+                bill_id=bill_id,
+                user_id=user.id
+            )
+            
+            if not unverified_items:
+                # Wszystkie pozycje już zweryfikowane
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="✅ Wszystkie pozycje zostały już zweryfikowane!"
+                )
+                return
+            
+            # Pobierz pierwszą pozycję
+            first_item = unverified_items[0]
+            
+            # Pobierz pozycję z relacjami (category)
+            stmt = (
+                select(BillItem)
+                .where(BillItem.id == first_item.id)
+                .options(selectinload(BillItem.category))
+            )
+            result = await session.execute(stmt)
+            item_with_relations = result.scalar_one()
+            
+            # Formatuj wiadomość
+            total_items = len(unverified_items)
+            message_text = format_bill_item_for_verification(
+                item=item_with_relations,
+                item_number=1,
+                total_items=total_items
+            )
+            
+            # Utwórz keyboard
+            keyboard = create_verification_keyboard(first_item.id)
+            
+            # Wyślij wiadomość
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=message_text,
+                reply_markup=keyboard
+            )
+            
+            # Zapisz stan weryfikacji w context.user_data
+            context.user_data['verification'] = {
+                'bill_id': bill_id,
+                'current_item_index': 0,
+                'unverified_item_ids': [item.id for item in unverified_items],
+                'editing_item_id': None
+            }
+            
+            logger.info(
+                f"Started verification for bill_id={bill_id}, user_id={user.id}. "
+                f"Total items to verify: {total_items}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error starting bill verification bill_id={bill_id}: {e}", exc_info=True)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="⚠️ Wystąpił błąd podczas rozpoczynania weryfikacji. Spróbuj ponownie później."
+            )
+
+
+async def handle_item_verification_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """
+    Obsługuje callback z przycisków weryfikacji.
+    Callback data format: "verify:{action}:{bill_item_id}"
+    Actions: "approve", "edit", "skip"
+    """
+    if not update.callback_query or not update.effective_user:
+        return
+    
+    query: CallbackQuery = update.callback_query
+    await query.answer()
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await query.edit_message_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
+    
+    # Parsuj callback_data: "verify:{action}:{bill_item_id}"
+    try:
+        _, action, bill_item_id_str = query.data.split(":", 2)
+        bill_item_id = int(bill_item_id_str)
+    except ValueError:
+        logger.error(f"Invalid callback data format: {query.data}")
+        await query.edit_message_text("⚠️ Nieprawidłowy format danych. Spróbuj ponownie.")
+        return
+    
+    async with get_or_create_session() as session:
+        try:
+            verification_service = await get_bill_verification_service(session=session)
+            
+            # Pobierz stan weryfikacji z context
+            verification_state = context.user_data.get('verification', {})
+            bill_id = verification_state.get('bill_id')
+            
+            if not bill_id:
+                # Jeśli nie ma stanu, spróbuj pobrać z BillItem
+                from src.bill_items.services import BillItemService
+                bill_item_service = BillItemService(session)
+                bill_item = await bill_item_service.get_by_id(bill_item_id)
+                bill_id = bill_item.bill_id
+                verification_state = {
+                    'bill_id': bill_id,
+                    'current_item_index': 0,
+                    'unverified_item_ids': [],
+                    'editing_item_id': None
+                }
+            
+            if action == "approve":
+                # Zatwierdź pozycję
+                await verification_service.verify_item(
+                    bill_item_id=bill_item_id,
+                    user_id=user.id
+                )
+                await query.edit_message_text("✅ Pozycja zatwierdzona!")
+                
+            elif action == "skip":
+                # Pomiń pozycję
+                await verification_service.skip_item(
+                    bill_item_id=bill_item_id,
+                    user_id=user.id
+                )
+                await query.edit_message_text("⏭️ Pozycja pominięta.")
+                
+            elif action == "edit":
+                # Przejdź do trybu edycji
+                verification_state['editing_item_id'] = bill_item_id
+                context.user_data['verification'] = verification_state
+                
+                await query.edit_message_text(
+                    "✏️ Wpisz poprawioną nazwę produktu:\n\n"
+                    "(Możesz anulować edycję wysyłając /cancel)"
+                )
+                return
+            else:
+                logger.error(f"Unknown action in callback: {action}")
+                await query.edit_message_text("⚠️ Nieznana akcja.")
+                return
+            
+            # Pobierz następną pozycję
+            unverified_item_ids = verification_state.get('unverified_item_ids', [])
+            if bill_item_id in unverified_item_ids:
+                unverified_item_ids.remove(bill_item_id)
+            
+            next_item = await verification_service.get_next_unverified_item(
+                bill_id=bill_id,
+                user_id=user.id,
+                exclude_item_ids=unverified_item_ids
+            )
+            
+            if next_item:
+                # Pobierz pozycję z relacjami
+                stmt = (
+                    select(BillItem)
+                    .where(BillItem.id == next_item.id)
+                    .options(selectinload(BillItem.category))
+                )
+                result = await session.execute(stmt)
+                item_with_relations = result.scalar_one()
+                
+                # Pobierz wszystkie pozycje do licznika
+                all_unverified = await verification_service.get_unverified_items(
+                    bill_id=bill_id,
+                    user_id=user.id
+                )
+                
+                current_index = len(unverified_item_ids) - len(all_unverified) + 1
+                total_items = len(all_unverified) + (len(unverified_item_ids) - len(all_unverified))
+                
+                # Formatuj wiadomość
+                message_text = format_bill_item_for_verification(
+                    item=item_with_relations,
+                    item_number=current_index,
+                    total_items=total_items
+                )
+                
+                # Utwórz keyboard
+                keyboard = create_verification_keyboard(next_item.id)
+                
+                # Wyślij następną pozycję
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=message_text,
+                    reply_markup=keyboard
+                )
+                
+                # Zaktualizuj stan
+                verification_state['unverified_item_ids'] = unverified_item_ids
+                context.user_data['verification'] = verification_state
+            else:
+                # Sprawdź czy wszystkie pozycje zostały zweryfikowane
+                if await verification_service.check_all_items_verified(bill_id, user.id):
+                    # Finalizuj weryfikację
+                    await verification_service.finalize_verification(bill_id, user.id)
+                    
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=(
+                            "✅ Weryfikacja zakończona!\n\n"
+                            f"Wszystkie pozycje zostały zweryfikowane.\n"
+                            f"Rachunek ID: {bill_id} został oznaczony jako ukończony."
+                        )
+                    )
+                    
+                    # Wyczyść stan weryfikacji
+                    context.user_data.pop('verification', None)
+                else:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text="ℹ️ Nie znaleziono więcej pozycji do weryfikacji."
+                    )
+            
+        except Exception as e:
+            logger.error(f"Error handling verification callback: {e}", exc_info=True)
+            await query.edit_message_text("⚠️ Wystąpił błąd podczas przetwarzania. Spróbuj ponownie.")
+
+
+async def handle_item_edit_text(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """
+    Obsługuje edycję tekstu pozycji (gdy użytkownik jest w trybie edycji).
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    # Sprawdź czy użytkownik jest w trybie edycji
+    verification_state = context.user_data.get('verification', {})
+    editing_item_id = verification_state.get('editing_item_id')
+    
+    if not editing_item_id:
+        # Nie jesteśmy w trybie edycji, ignoruj
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        return
+    
+    # Sprawdź czy to komenda /cancel
+    if update.message.text and update.message.text.strip().lower() == "/cancel":
+        verification_state['editing_item_id'] = None
+        context.user_data['verification'] = verification_state
+        await update.message.reply_text("❌ Anulowano edycję.")
+        return
+    
+    edited_text = update.message.text.strip() if update.message.text else ""
+    
+    if not edited_text:
+        await update.message.reply_text("⚠️ Tekst nie może być pusty. Wpisz nazwę produktu lub /cancel aby anulować.")
+        return
+    
+    async with get_or_create_session() as session:
+        try:
+            verification_service = await get_bill_verification_service(session=session)
+            
+            # Weryfikuj pozycję z edytowanym tekstem
+            verified_item = await verification_service.verify_item(
+                bill_item_id=editing_item_id,
+                user_id=user.id,
+                edited_text=edited_text
+            )
+            
+            await update.message.reply_text("✅ Pozycja zaktualizowana i zatwierdzona!")
+            
+            # Wyczyść tryb edycji
+            verification_state['editing_item_id'] = None
+            bill_id = verification_state.get('bill_id')
+            
+            if bill_id:
+                # Pobierz następną pozycję
+                unverified_item_ids = verification_state.get('unverified_item_ids', [])
+                if editing_item_id in unverified_item_ids:
+                    unverified_item_ids.remove(editing_item_id)
+                
+                next_item = await verification_service.get_next_unverified_item(
+                    bill_id=bill_id,
+                    user_id=user.id,
+                    exclude_item_ids=unverified_item_ids
+                )
+                
+                if next_item:
+                    # Pobierz pozycję z relacjami
+                    stmt = (
+                        select(BillItem)
+                        .where(BillItem.id == next_item.id)
+                        .options(selectinload(BillItem.category))
+                    )
+                    result = await session.execute(stmt)
+                    item_with_relations = result.scalar_one()
+                    
+                    # Pobierz wszystkie pozycje do licznika
+                    all_unverified = await verification_service.get_unverified_items(
+                        bill_id=bill_id,
+                        user_id=user.id
+                    )
+                    
+                    current_index = len(unverified_item_ids) - len(all_unverified) + 1
+                    total_items = len(all_unverified) + (len(unverified_item_ids) - len(all_unverified))
+                    
+                    # Formatuj wiadomość
+                    message_text = format_bill_item_for_verification(
+                        item=item_with_relations,
+                        item_number=current_index,
+                        total_items=total_items
+                    )
+                    
+                    # Utwórz keyboard
+                    keyboard = create_verification_keyboard(next_item.id)
+                    
+                    # Wyślij następną pozycję
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=message_text,
+                        reply_markup=keyboard
+                    )
+                    
+                    # Zaktualizuj stan
+                    verification_state['unverified_item_ids'] = unverified_item_ids
+                    context.user_data['verification'] = verification_state
+                else:
+                    # Sprawdź czy wszystkie pozycje zostały zweryfikowane
+                    if await verification_service.check_all_items_verified(bill_id, user.id):
+                        # Finalizuj weryfikację
+                        await verification_service.finalize_verification(bill_id, user.id)
+                        
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=(
+                                "✅ Weryfikacja zakończona!\n\n"
+                                f"Wszystkie pozycje zostały zweryfikowane.\n"
+                                f"Rachunek ID: {bill_id} został oznaczony jako ukończony."
+                            )
+                        )
+                        
+                        # Wyczyść stan weryfikacji
+                        context.user_data.pop('verification', None)
+                    else:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text="ℹ️ Nie znaleziono więcej pozycji do weryfikacji."
+                        )
+            
+        except Exception as e:
+            logger.error(f"Error handling item edit: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Wystąpił błąd podczas aktualizacji pozycji. Spróbuj ponownie.")

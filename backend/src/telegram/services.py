@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, TypeHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, TypeHandler, CallbackQueryHandler, filters
 
 from src.config import settings
 from src.telegram import handlers
@@ -66,6 +66,24 @@ class TelegramBotService:
         
         # Handle photos (receipts)
         app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handlers.handle_receipt_image))
+        
+        # Handle verification callbacks (inline keyboard buttons)
+        app.add_handler(
+            CallbackQueryHandler(
+                handlers.handle_item_verification_callback,
+                pattern=r"^verify:"
+            )
+        )
+        
+        # Handle text messages (for item editing during verification)
+        # This handler should run after other message handlers
+        # We check in the handler itself if user is in edit mode
+        app.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND,
+                handlers.handle_item_edit_text
+            )
+        )
 
     @classmethod
     async def process_webhook_update(
