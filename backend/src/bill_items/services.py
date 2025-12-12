@@ -33,7 +33,8 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
             bill_id=data.bill_id,
             index_id=data.index_id,
             original_text=data.original_text,
-            confidence_score=data.confidence_score
+            confidence_score=data.confidence_score,
+            category_id=data.category_id
         )
 
         # Persistence (Unit of Work)

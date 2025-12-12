@@ -158,12 +158,6 @@ class BillsProcessorService:
             )
 
             # Step 9: Update Bill with final data
-            # #region agent log
-            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                import json
-                import time
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"service.py:161","message":"Before _update_bill_completed","data":{"bill_id":bill_id,"final_status":final_status.value},"timestamp":int(time.time()*1000)})+'\n')
-            # #endregion
             await self._update_bill_completed(
                 bill_id,
                 total_amount=ocr_data.total_amount,
@@ -171,10 +165,6 @@ class BillsProcessorService:
                 bill_date=ocr_data.date or bill.bill_date,
                 status=final_status
             )
-            # #region agent log
-            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"service.py:169","message":"After _update_bill_completed","data":{"bill_id":bill_id,"final_status":final_status.value},"timestamp":int(time.time()*1000)})+'\n')
-            # #endregion
 
             logger.info(
                 f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
@@ -185,25 +175,11 @@ class BillsProcessorService:
             )
 
         except Exception as e:
-            # #region agent log
-            with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                import json
-                import time
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:177","message":"Exception in process_receipt","data":{"bill_id":bill_id,"error":str(e),"error_type":type(e).__name__},"timestamp":int(time.time()*1000)})+'\n')
-            # #endregion
             logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
             # Try to save error state
             try:
                 await self._set_error(bill_id, str(e))
-                # #region agent log
-                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:182","message":"Error status set successfully","data":{"bill_id":bill_id},"timestamp":int(time.time()*1000)})+'\n')
-                # #endregion
             except Exception as inner_e:
-                # #region agent log
-                with open(r'd:\10Devs\bills\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"service.py:185","message":"Failed to set error status","data":{"bill_id":bill_id,"inner_error":str(inner_e)},"timestamp":int(time.time()*1000)})+'\n')
-                # #endregion
                 logger.critical(f"CRITICAL: Failed to save error status for bill {bill_id}: {inner_e}", exc_info=True)
             
             # Re-raise to let caller know something went wrong
@@ -505,7 +481,8 @@ class BillsProcessorService:
             confidence_score=Decimal(str(normalized_item.confidence_score)),
             is_verified=not needs_verification,  # False if negative price or low confidence
             verification_source=VerificationSource.AUTO,
-            index_id=normalized_item.product_index_id  # FK do ProductIndex (nullable)
+            index_id=normalized_item.product_index_id,  # FK do ProductIndex (nullable)
+            category_id=normalized_item.category_id  # FK do Category (nullable)
         )
 
     async def _update_bill_completed(

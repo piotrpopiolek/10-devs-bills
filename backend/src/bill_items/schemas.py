@@ -96,6 +96,12 @@ class BillItemBase(AppBaseModel, BillItemValidationMixin):
         le=1,
         description="OCR confidence score (optional, range 0.00-1.00, max 3 digits with 2 decimal places)"
     )
+    
+    category_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Category ID (optional, must be positive)"
+    )
 
 class BillItemCreate(BillItemBase):
     pass
