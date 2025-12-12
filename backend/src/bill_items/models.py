@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import (
     Integer, Text, DateTime, Boolean, Numeric, 
@@ -17,6 +17,7 @@ from src.db.main import Base
 if TYPE_CHECKING:
     from src.bills.models import Bill
     from src.product_indexes.models import ProductIndex
+    from src.categories.models import Category
 
 class VerificationSource(str, enum.Enum):
     AUTO = "auto"
@@ -70,3 +71,5 @@ class BillItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     bill: Mapped['Bill'] = relationship('Bill', back_populates='bill_items')
     index: Mapped[Optional['ProductIndex']] = relationship('ProductIndex', back_populates='bill_items')
+    category_id: Mapped[int] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=False)
+    category: Mapped['Category'] = relationship('Category', back_populates='bill_items_categorized')

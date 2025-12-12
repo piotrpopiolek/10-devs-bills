@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import ForeignKey, Index, Integer, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,6 +11,7 @@ from src.db.main import Base
 
 if TYPE_CHECKING:
     from src.product_indexes.models import ProductIndex
+    from src.bill_items.models import BillItem
 
 class Category(Base):
     """
@@ -40,6 +41,7 @@ class Category(Base):
     parent: Mapped[Optional['Category']] = relationship('Category', foreign_keys=[parent_id], remote_side=[id], back_populates='children')
     children: Mapped[list['Category']] = relationship('Category', foreign_keys=[parent_id], back_populates='parent')
     product_indexes: Mapped[list['ProductIndex']] = relationship('ProductIndex', back_populates='category')
+    bill_items_categorized: Mapped[List['BillItem']] = relationship('BillItem', back_populates='category')
     
 
 
