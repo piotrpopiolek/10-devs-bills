@@ -88,7 +88,7 @@ class OCRService:
             ExtractionError: Jeśli ekstrakcja się nie powiodła
             AIServiceError: Jeśli wystąpił błąd komunikacji z AI
         """
-        logger.info("OCR extraction started", extra={"filename": file.filename})
+        logger.info("OCR extraction started", extra={"file_name": file.filename})
 
         # 1. Walidacja pliku
         mime_type = await self._validate_file(file)
@@ -109,6 +109,7 @@ class OCRService:
         # 5. Parsowanie i walidacja odpowiedzi
         try:
             result = self._parse_response(llm_response)
+            logger.info("Gemini response parsed successfully", extra={"response": result})
         except Exception as e:
             logger.error("Failed to parse Gemini response", exc_info=True, extra={"error": str(e)})
             raise ExtractionError(f"Nie udało się przetworzyć odpowiedzi z Gemini: {str(e)}") from e

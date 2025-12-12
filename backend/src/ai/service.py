@@ -225,6 +225,79 @@ class AICategorizationService:
         
         return row[0] if row else None
 
+    async def _assign_category(
+        self,
+        product_index: Optional[ProductIndex],
+        cleaned_text: str,
+        category_suggestion: Optional[str] = None,
+        shop_name: Optional[str] = None
+    ) -> Category:
+        """
+        Przypisuje kategorię do produktu.
+        
+        Priorytety (zgodnie z planem, sekcja 4.2):
+        1. Jeśli product_index ma category_id → użyj tej kategorii
+        2. Jeśli product_index jest None → użyj AI Categorization (Gemini API)
+        3. W przeciwnym razie → użyj "Inne"
+        
+        Args:
+            product_index: ProductIndex znaleziony przez normalizację (lub None)
+            cleaned_text: Wyczyszczony tekst produktu (dla AI Categorization)
+            category_suggestion: Sugestia kategorii z OCR/LLM (opcjonalne)
+            shop_name: Nazwa sklepu dla kontekstu AI (opcjonalne)
+            
+        Returns:
+            Category: Przypisana kategoria produktu
+            
+        Most Koncepcyjny (PHP -> Python):
+        - W Symfony/Laravel mielibyście podobną logikę w Service Layer (np. OrderService::assignCategory).
+        - W Pythonie używamy async/await dla operacji I/O (DB, API), co jest idiomatyczne dla FastAPI.
+        """
+        # Priorytet 1: Kategoria z ProductIndex
+        if product_index and product_index.category_id:
+            try:
+                category = await self.category_service.get_by_id(product_index.category_id)
+                logger.debug(
+                    f"Użyto kategorii z ProductIndex (ID: {product_index.id}, "
+                    f"category_id: {product_index.category_id})"
+                )
+                return category
+            except ResourceNotFoundError:
+                logger.warning(
+                    f"ProductIndex (ID: {product_index.id}) ma nieistniejące category_id: "
+                    f"{product_index.category_id}. Przechodzę do AI Categorization."
+                )
+                # Fallback do AI Categorization jeśli kategoria nie istnieje
+        
+        # Priorytet 2: AI Categorization (gdy produkt nieznany)
+        if not product_index:
+            available_categories = await self.category_service.get_all_categories()
+            ai_category_id = await self._ai_categorize_product(
+                cleaned_text=cleaned_text,
+                category_suggestion=category_suggestion,
+                shop_name=shop_name,
+                available_categories=available_categories
+            )
+            
+            if ai_category_id:
+                # Walidacja: sprawdź czy kategoria rzeczywiście istnieje w DB
+                try:
+                    category = await self.category_service.get_by_id(ai_category_id)
+                    logger.info(
+                        f"AI skategoryzowało produkt '{cleaned_text}' do kategorii ID: {ai_category_id}"
+                    )
+                    return category
+                except ResourceNotFoundError:
+                    logger.warning(
+                        f"AI zwróciło nieistniejące category_id={ai_category_id} dla produktu: "
+                        f"{cleaned_text}. Używam fallback."
+                    )
+        
+        # Priorytet 3: Fallback
+        fallback_category = await self.category_service.get_fallback_category()
+        logger.debug(f"Użyto kategorii fallback 'Inne' dla produktu: {cleaned_text}")
+        return fallback_category
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -357,18 +430,19 @@ Zwróć odpowiedź w formacie JSON:
         """
         Główna metoda normalizacji produktu z OCR.
         
-        Workflow (zaktualizowany z AI Categorization):
-        1. Pre-processing (czyszczenie tekstu)
-        2. Wyszukiwanie w aliasach (priorytet: User+Shop -> Shop -> Global)
-        3. Jeśli nie znaleziono: Fuzzy search w ProductIndex
-        4. Jeśli nie znaleziono: AI Categorization (Gemini API) [NOWE w MVP]
-        5. Jeśli AI nie zwróciło wyniku: Fallback do kategorii "Inne"
-        6. Opcjonalnie: Zapisanie nowego aliasu (UPSERT)
+        Workflow (zgodnie z planem, sekcja 4.4):
+        1. Pre-processing tekstu (Step 0)
+        2. Normalizacja nazwy (Step 1: aliasy, Step 2: fuzzy search) - zwraca ProductIndex lub None
+        3. Przypisanie kategorii (sekcja 4) - wywołanie _assign_category() jako osobny proces
+        
+        WAŻNE: Normalizacja nazwy produktu jest oddzielona od wyboru kategorii.
+        Algorytm normalizacji skupia się wyłącznie na znalezieniu odpowiedniego ProductIndex
+        na podstawie nazwy produktu z OCR. Wybór kategorii następuje osobno (patrz sekcja 4).
         
         Args:
             ocr_item: Pozycja z OCR (surowe dane)
             shop_id: ID sklepu (dla kontekstu aliasów)
-            shop_name: Nazwa sklepu (dla kontekstu AI Categorization) [NOWE]
+            shop_name: Nazwa sklepu (dla kontekstu AI Categorization)
             user_id: ID użytkownika (dla kontekstu aliasów)
             save_alias: Czy zapisać alias po normalizacji (domyślnie True)
             
@@ -383,10 +457,11 @@ Zwróć odpowiedź w formacie JSON:
         
         if not cleaned_text:
             # Pusty tekst po czyszczeniu - fallback
+            # Używamy oryginalnej nazwy z OCR jako normalized_name
             fallback_category = await self.category_service.get_fallback_category()
             return NormalizedItem(
                 original_text=ocr_item.name,
-                normalized_name=None,
+                normalized_name=ocr_item.name,  # Pozostawiamy nazwę z OCR
                 quantity=ocr_item.quantity,
                 unit_price=ocr_item.unit_price or Decimal("0.0"),
                 total_price=ocr_item.total_price,
@@ -396,37 +471,22 @@ Zwróć odpowiedź w formacie JSON:
                 is_confident=False
             )
 
-        # Step 1: Szukaj w aliasach
-        product_from_alias = await self._find_by_alias(cleaned_text, shop_id, user_id)
+        # Step 1: Wyszukiwanie w aliasach (priorytet: User+Shop -> Shop -> Global)
+        product_index = await self._find_by_alias(cleaned_text, shop_id, user_id)
         
-        if product_from_alias:
-            # Znaleziono w aliasach - najwyższa pewność
-            return NormalizedItem(
-                original_text=ocr_item.name,
-                normalized_name=product_from_alias.name,
-                quantity=ocr_item.quantity,
-                unit_price=ocr_item.unit_price or Decimal("0.0"),
-                total_price=ocr_item.total_price,
-                category_id=product_from_alias.category_id,
-                product_index_id=product_from_alias.id,
-                confidence_score=1.0,
-                is_confident=True
+        # Step 2: Fuzzy Search (jeśli alias nie znaleziony)
+        if not product_index:
+            product_index = await self._fuzzy_search_product(
+                cleaned_text,
+                ocr_item.category_suggestion  # Opcjonalne filtrowanie
             )
-
-        # Step 2: Fuzzy search w ProductIndex
-        product_from_fuzzy = await self._fuzzy_search_product(
-            cleaned_text,
-            ocr_item.category_suggestion
-        )
-        
-        if product_from_fuzzy:
-            # Znaleziono przez fuzzy search - średnia pewność
-            # Opcjonalnie zapisz nowy alias (uczenie się systemu)
-            if save_alias:
+            
+            # Zapis aliasu po znalezieniu przez fuzzy search (uczenie się systemu)
+            if product_index and save_alias:
                 try:
                     await self.alias_service.upsert_alias(
                         raw_name=cleaned_text,
-                        index_id=product_from_fuzzy.id,
+                        index_id=product_index.id,
                         shop_id=shop_id,
                         user_id=user_id
                     )
@@ -434,69 +494,47 @@ Zwróć odpowiedź w formacie JSON:
                     # Log error, ale nie przerywaj procesu
                     # (alias nie jest krytyczny dla normalizacji)
                     logger.error(f"Błąd zapisu aliasu: {str(e)}")
-            
-            return NormalizedItem(
-                original_text=ocr_item.name,
-                normalized_name=product_from_fuzzy.name,
-                quantity=ocr_item.quantity,
-                unit_price=ocr_item.unit_price or Decimal("0.0"),
-                total_price=ocr_item.total_price,
-                category_id=product_from_fuzzy.category_id,
-                product_index_id=product_from_fuzzy.id,
-                confidence_score=ocr_item.confidence_score * 0.8,  # Fuzzy match penalty
-                is_confident=True
-            )
 
-        # Step 3: AI Categorization (Gemini API) [MVP]
+        # Kategoryzacja (osobny proces) - zgodnie z planem sekcja 4
         # KRYTYCZNE: Ta operacja jest POZA transakcją DB (wywołania API mogą trwać sekundy)
-        available_categories = await self.category_service.get_all_categories()
-        ai_category_id = await self._ai_categorize_product(
+        category = await self._assign_category(
+            product_index=product_index,
             cleaned_text=cleaned_text,
             category_suggestion=ocr_item.category_suggestion,
-            shop_name=shop_name,
-            available_categories=available_categories
+            shop_name=shop_name
         )
 
-        if ai_category_id:
-            # Walidacja: sprawdź czy kategoria rzeczywiście istnieje w DB
-            try:
-                await self.category_service.get_by_id(ai_category_id)
-            except ResourceNotFoundError:
-                logger.warning(
-                    f"AI zwróciło nieistniejące category_id={ai_category_id} dla produktu: {cleaned_text}. "
-                    "Używam fallback."
-                )
-                ai_category_id = None
-            
-            if ai_category_id:
-                # AI zaproponowało kategorię z wystarczającą pewnością
-                logger.info(f"AI skategoryzowało produkt '{cleaned_text}' do kategorii ID: {ai_category_id}")
-                return NormalizedItem(
-                    original_text=ocr_item.name,
-                    normalized_name=None,  # Produkt nieznany, tylko kategoria
-                    quantity=ocr_item.quantity,
-                    unit_price=ocr_item.unit_price or Decimal("0.0"),
-                    total_price=ocr_item.total_price,
-                    category_id=ai_category_id,
-                    product_index_id=None,
-                    confidence_score=ocr_item.confidence_score * 0.7,  # AI match penalty
-                    is_confident=True
-                )
-
-        # Step 4: Fallback - produkt nieznany systemowi (AI nie znalazło kategorii)
+        # Oblicz confidence score na podstawie wyniku normalizacji
         fallback_category = await self.category_service.get_fallback_category()
+        is_fallback = category.id == fallback_category.id
         
-        logger.info(f"Fallback do kategorii 'Inne' dla produktu: {cleaned_text}")
+        if product_index:
+            # Produkt znaleziony w słowniku (alias lub fuzzy search)
+            confidence_score = 1.0
+            is_confident = True
+        else:
+            # Produkt nieznany - użyto AI Categorization lub fallback
+            if is_fallback:
+                confidence_score = ocr_item.confidence_score * 0.5  # Unknown product penalty
+                is_confident = False
+            else:
+                confidence_score = ocr_item.confidence_score * 0.7  # AI match penalty
+                is_confident = True
+
+        # Efekt normalizacji: znalezienie nazwy produktu lub pozostanie nazwy odczytanej przez OCR
+        # Jeśli produkt znaleziony → użyj nazwy z ProductIndex
+        # Jeśli produkt nieznany → użyj wyczyszczonej nazwy z OCR (cleaned_text)
+        normalized_name = product_index.name if product_index else cleaned_text
         
         return NormalizedItem(
             original_text=ocr_item.name,
-            normalized_name=None,
+            normalized_name=normalized_name,
             quantity=ocr_item.quantity,
             unit_price=ocr_item.unit_price or Decimal("0.0"),
             total_price=ocr_item.total_price,
-            category_id=fallback_category.id,
-            product_index_id=None,
-            confidence_score=ocr_item.confidence_score * 0.5,  # Unknown product penalty
-            is_confident=False
+            category_id=category.id,
+            product_index_id=product_index.id if product_index else None,
+            confidence_score=confidence_score,
+            is_confident=is_confident
         )
 

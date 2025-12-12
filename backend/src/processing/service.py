@@ -11,7 +11,7 @@ from datetime import datetime
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from src.bills.models import Bill, ProcessingStatus
 from src.common.exceptions import ResourceNotFoundError
@@ -74,27 +74,32 @@ class BillsProcessorService:
         logger.info(f"Starting receipt processing for bill_id={bill_id}")
 
         try:
-            # Step 1: Get Bill and validate status
+            # Step 1: Get Bill and validate basic requirements
             bill = await self._get_bill(bill_id)
 
-            if bill.status != ProcessingStatus.PENDING:
-                if bill.status == ProcessingStatus.COMPLETED:
-                    logger.info(f"Bill {bill_id} already processed (COMPLETED), skipping")
-                elif bill.status == ProcessingStatus.ERROR:
-                    logger.warning(f"Bill {bill_id} previously failed (ERROR), retrying...")
-                else:
-                    logger.warning(f"Bill {bill_id} is in status {bill.status}, skipping")
+            # Quick check: jeśli już przetworzony, pomiń (early return)
+            if bill.status == ProcessingStatus.COMPLETED:
+                logger.info(f"Bill {bill_id} already processed (COMPLETED), skipping")
+                return
+            
+            if bill.status == ProcessingStatus.TO_VERIFY:
+                logger.info(f"Bill {bill_id} already processed (TO_VERIFY), skipping")
                 return
 
             if not bill.image_url:
                 await self._set_error(bill_id, "Bill has no image_url")
                 return
 
-            # Step 2: Download file from Storage
-            file_content = await self._download_file(bill.image_url)
+            # Step 2: Atomowo przejmij lock (PENDING → PROCESSING)
+            # KRYTYCZNE: To zapobiega race condition - jeśli wiele procesów próbuje
+            # przetworzyć ten sam paragon równolegle, tylko jeden przejmie lock.
+            if not await self._try_acquire_processing_lock(bill_id):
+                # Inny proces już rozpoczął przetwarzanie - przerwij
+                logger.info(f"Bill {bill_id} is already being processed by another process, skipping")
+                return
 
-            # Step 3: Update Bill status → PROCESSING
-            await self._update_bill_status(bill_id, ProcessingStatus.PROCESSING)
+            # Step 3: Download file from Storage
+            file_content = await self._download_file(bill.image_url)
 
             # Step 4: Call OCR Service
             ocr_data = await self._extract_receipt_data(file_content, bill.image_url)
@@ -106,7 +111,7 @@ class BillsProcessorService:
             )
 
             # Step 6: AI Categorization & Normalization (POZA transakcją DB)
-            # KRYTYCZNE: Wywołania Gemini API (w AI service) muszą być PRZED session.begin()
+            # KRYTYCZNE: Wywołania Gemini API (w AI service) muszą być PRZED transakcjami DB
             # Serwis AI może używać własnych krótkich transakcji do odczytu (read-only),
             # ale nie powinien blokować połączenia czekając na Gemini.
             normalized_items = await self._normalize_items(
@@ -116,39 +121,61 @@ class BillsProcessorService:
                 user_id=bill.user_id
             )
 
-            # Step 7: Create BillItems (wewnątrz transakcji - szybka operacja)
-            async with self.session.begin():
-                await self._create_bill_items(bill_id, normalized_items)
-
-            # Step 8: Determine final status based on validation
-            # Sprawdzamy czy jakikolwiek item wymaga weryfikacji
-            requires_verification = any(
-                not item.is_confident or item.confidence_score < 0.8
-                for item in normalized_items
+            # Detailed logging of normalized items
+            logger.info(
+                f"AI normalization completed: {len(normalized_items)}/{len(ocr_data.items)} items normalized | "
+                f"shop_id={shop_id}, shop_name={ocr_data.shop_name}"
             )
             
-            final_status = (
-                ProcessingStatus.TO_VERIFY 
-                if requires_verification 
-                else ProcessingStatus.COMPLETED
-            )
+            # Log each normalized item in detail
+            for idx, normalized_item in enumerate(normalized_items, start=1):
+                unit_price_str = f"{normalized_item.unit_price:.2f}" if normalized_item.unit_price else "N/A"
+                logger.info(
+                    f"Normalized Item #{idx}: {normalized_item.original_text} → {normalized_item.normalized_name} | "
+                    f"quantity={normalized_item.quantity}, unit_price={unit_price_str}, total_price={normalized_item.total_price:.2f} | "
+                    f"category_id={normalized_item.category_id}, product_index_id={normalized_item.product_index_id} | "
+                    f"confidence={normalized_item.confidence_score:.2f}, is_confident={normalized_item.is_confident}"
+                )
 
-            # Step 9: Update Bill with final data
-            await self._update_bill_completed(
-                bill_id,
-                total_amount=ocr_data.total_amount,
-                shop_id=shop_id,
-                bill_date=ocr_data.date or bill.bill_date,
-                status=final_status
-            )
+            logger.info(f"Updating bill {bill_id} status to COMPLETED")
+            await self.bill_service.update(bill_id, BillUpdate(status=ProcessingStatus.COMPLETED), bill.user_id)
 
-            logger.info(
-                f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
-                extra={
-                    "status": final_status.value,
-                    "requires_verification": ocr_data.requires_verification
-                }
-            )
+            # # Step 7: Create BillItems
+            # # Uwaga: BillItemService.create() wykonuje własny commit(), więc nie używamy session.begin()
+            # # Most Koncepcyjny (PHP → Python): W Symfony/Laravel, Doctrine/Eloquent automatycznie
+            # # zarządza transakcjami przez EntityManager/DB facade. W SQLAlchemy async, każdy serwis
+            # # wykonuje własne commit(), co jest idiomatyczne dla async SQLAlchemy (connection pooling).
+            # await self._create_bill_items(bill_id, normalized_items)
+
+            # # Step 8: Determine final status based on validation
+            # # Sprawdzamy czy jakikolwiek item wymaga weryfikacji
+            # requires_verification = any(
+            #     not item.is_confident or item.confidence_score < 0.8
+            #     for item in normalized_items
+            # )
+            
+            # final_status = (
+            #     ProcessingStatus.TO_VERIFY 
+            #     if requires_verification 
+            #     else ProcessingStatus.COMPLETED
+            # )
+
+            # # Step 9: Update Bill with final data
+            # await self._update_bill_completed(
+            #     bill_id,
+            #     total_amount=ocr_data.total_amount,
+            #     shop_id=shop_id,
+            #     bill_date=ocr_data.date or bill.bill_date,
+            #     status=final_status
+            # )
+
+            # logger.info(
+            #     f"Receipt processing finished for bill_id={bill_id}, status={final_status.value}",
+            #     extra={
+            #         "status": final_status.value,
+            #         "requires_verification": ocr_data.requires_verification
+            #     }
+            # )
 
         except Exception as e:
             logger.error(f"Error processing receipt bill_id={bill_id}: {e}", exc_info=True)
@@ -207,13 +234,14 @@ class BillsProcessorService:
             headers={"content-type": mime_type}
         )
 
-        # Call OCR Service
         ocr_data = await self.ocr_service.extract_data(upload_file)
-        logger.info(f"OCR extraction successful: {len(ocr_data.items)} items")
+        
         return ocr_data
 
     async def _update_bill_status(self, bill_id: int, status: ProcessingStatus) -> None:
-        """Update Bill status."""
+        """
+        Update Bill status using BillService.
+        """
         bill = await self._get_bill(bill_id)
 
         update_data = BillUpdate(status=status)
@@ -224,6 +252,40 @@ class BillsProcessorService:
         except Exception as e:
             logger.error(f"Failed to update bill status: {e}", exc_info=True)
             raise ProcessingError(f"Failed to update bill status: {str(e)}") from e
+
+    async def _try_acquire_processing_lock(self, bill_id: int) -> bool:
+        """
+        Atomowo aktualizuje status z PENDING na PROCESSING.
+        
+        Zwraca True, jeśli udało się zaktualizować (lock acquired),
+        False, jeśli status już nie był PENDING (inny proces rozpoczął przetwarzanie).
+        
+        Args:
+            bill_id: ID paragonu do zablokowania
+            
+        Returns:
+            bool: True jeśli lock został nabyty, False jeśli inny proces już rozpoczął przetwarzanie
+        """
+        stmt = (
+            update(Bill)
+            .where(Bill.id == bill_id)
+            .where(Bill.status == ProcessingStatus.PENDING)
+            .values(status=ProcessingStatus.PROCESSING)
+        )
+        
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        
+        rows_updated = result.rowcount
+        if rows_updated > 0:
+            logger.info(f"Acquired processing lock for bill_id={bill_id}")
+            return True
+        else:
+            logger.warning(
+                f"Could not acquire processing lock for bill_id={bill_id} - "
+                f"status is not PENDING (likely already being processed by another process)"
+            )
+            return False
 
     async def _get_or_create_shop(
         self,
@@ -288,6 +350,14 @@ class BillsProcessorService:
                     shop_name=shop_name,
                     user_id=user_id,
                     save_alias=True  # Uczenie się systemu - zapis aliasów
+                )
+                # Detailed logging of normalized item
+                unit_price_str = f"{normalized_item.unit_price:.2f}" if normalized_item.unit_price else "N/A"
+                logger.info(
+                    f"AI normalize_item returned: original='{normalized_item.original_text}' → normalized='{normalized_item.normalized_name}' | "
+                    f"quantity={normalized_item.quantity}, unit_price={unit_price_str}, total_price={normalized_item.total_price:.2f} | "
+                    f"category_id={normalized_item.category_id}, product_index_id={normalized_item.product_index_id} | "
+                    f"confidence={normalized_item.confidence_score:.2f}, is_confident={normalized_item.is_confident}"
                 )
                 normalized_items.append(normalized_item)
             except Exception as e:
