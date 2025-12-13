@@ -95,3 +95,17 @@ export function getCurrentMonth(): string {
 
   return `${year}-${month}`;
 }
+
+/**
+ * Konwertuje kwotę (string/number) na number
+ * @param amount - Kwota jako string lub number
+ * @returns Liczba (number)
+ */
+export function parseAmount(amount: number | string | null | undefined): number {
+  if (amount === null || amount === undefined) return 0;
+  if (typeof amount === 'string') {
+    const parsed = parseFloat(amount);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return amount;
+}

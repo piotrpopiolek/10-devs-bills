@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import type {
   UsageStats,
   BillResponse,
+  MonthlyReportResponse,
 } from '@/types';
 import { getDailyReport, getMonthlyReport } from '@/lib/services/reports';
 import { authService } from '@/lib/services/auth';
 import { getBills } from '@/lib/services/bills';
-import { getCurrentMonth, getPreviousMonth } from '@/lib/utils/formatting';
+import { getCurrentMonth, getPreviousMonth, parseAmount } from '@/lib/utils/formatting';
 
 interface UseDashboardReturn {
   // Daily expenses (z GET /api/v1/reports/daily)
@@ -47,6 +48,7 @@ export const useDashboard = (): UseDashboardReturn => {
   // Monthly expenses state
   const [monthlyExpenses, setMonthlyExpenses] = useState<number | null>(null);
   const [previousMonthExpenses, setPreviousMonthExpenses] = useState<number | null>(null);
+  const [monthlyReport, setMonthlyReport] = useState<MonthlyReportResponse | null>(null);
   const [isLoadingMonthly, setIsLoadingMonthly] = useState<boolean>(true);
   const [monthlyError, setMonthlyError] = useState<Error | null>(null);
 
@@ -126,7 +128,7 @@ export const useDashboard = (): UseDashboardReturn => {
     } finally {
       setIsLoadingMonthly(false);
     }
-  }, [parseAmount]);
+  }, []);
 
   // Fetch usage stats
   const fetchUsage = useCallback(async () => {
@@ -192,6 +194,7 @@ export const useDashboard = (): UseDashboardReturn => {
     // Monthly expenses
     monthlyExpenses,
     previousMonthExpenses,
+    monthlyReport,
     isLoadingMonthly,
     monthlyError,
 

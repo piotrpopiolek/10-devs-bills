@@ -2,6 +2,7 @@ import React from 'react';
 import { useDashboard } from '@/components/hooks/useDashboard';
 import { DashboardStats } from './DashboardStats';
 import { RecentBillsSection } from './RecentBillsSection';
+import { DashboardCharts } from './DashboardCharts';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -45,6 +46,12 @@ export const DashboardView: React.FC = () => {
         isLoadingDaily={isLoadingDaily}
         isLoadingMonthly={isLoadingMonthly}
         isLoadingUsage={isLoadingUsage}
+      />
+
+      {/* Sekcja z wykresami */}
+      <DashboardCharts
+        monthlyReport={monthlyReport}
+        isLoading={isLoadingMonthly}
       />
 
       {/* Sekcja z ostatnimi paragonami */}
