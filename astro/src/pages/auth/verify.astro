@@ -35,9 +35,9 @@ import Layout from '../../layouts/Layout.astro';
       
       if (statusMessage) statusMessage.innerText = "Zalogowano pomyślnie! Przekierowywanie...";
       
-      // Redirect to dashboard/home after short delay
+      // Redirect to shops page after short delay
       setTimeout(() => {
-        window.location.href = '/';
+        window.location.href = '/shops';
       }, 1000);
       
     } catch (error) {
