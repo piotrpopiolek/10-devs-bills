@@ -1,4 +1,4 @@
-import type { BillsQueryParams, BillListResponse, ApiResponse } from '../../types';
+import type { BillsQueryParams, BillListResponse, ApiResponse, BillResponse, BillItemListResponse, PendingVerificationQueryParams } from '../../types';
 import { apiFetch } from '../api-client';
 
 export const getBills = async (params: BillsQueryParams): Promise<BillListResponse> => {
@@ -55,6 +55,94 @@ export const getBills = async (params: BillsQueryParams): Promise<BillListRespon
     return data as BillListResponse;
   } catch (error) {
     console.error('Error fetching bills:', error);
+    throw error;
+  }
+};
+
+export const getBillDetail = async (billId: number): Promise<BillResponse> => {
+  if (!billId || billId <= 0) {
+    throw new Error('Nieprawidłowe ID paragonu');
+  }
+
+  try {
+    const response = await apiFetch(`/api/bills/${billId}`);
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Brak dostępu do tego paragonu');
+      }
+      if (response.status === 404) {
+        throw new Error('Paragon nie został znaleziony');
+      }
+      if (response.status === 401) {
+        throw new Error('Brak autoryzacji');
+      }
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data: ApiResponse<BillResponse> | BillResponse = await response.json();
+
+    if ('data' in data && 'success' in data) {
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to fetch bill');
+      }
+      return data.data;
+    }
+
+    return data as BillResponse;
+  } catch (error) {
+    console.error('Error fetching bill detail:', error);
+    throw error;
+  }
+};
+
+export const getBillItems = async (
+  billId: number,
+  params: { skip?: number; limit?: number }
+): Promise<BillItemListResponse> => {
+  if (!billId || billId <= 0) {
+    throw new Error('Nieprawidłowe ID paragonu');
+  }
+
+  const queryParams = new URLSearchParams();
+
+  const limit = params.limit || 100;
+  queryParams.append('limit', limit.toString());
+
+  const skip = params.skip ?? 0;
+  queryParams.append('skip', skip.toString());
+
+  try {
+    const response = await apiFetch(
+      `/api/bills/${billId}/items?${queryParams.toString()}`
+    );
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Brak dostępu do tego paragonu');
+      }
+      if (response.status === 404) {
+        throw new Error('Paragon nie został znaleziony');
+      }
+      if (response.status === 401) {
+        throw new Error('Brak autoryzacji');
+      }
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data: ApiResponse<BillItemListResponse> | BillItemListResponse =
+      await response.json();
+
+    if ('data' in data && 'success' in data) {
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to fetch bill items');
+      }
+      return data.data;
+    }
+
+    return data as BillItemListResponse;
+  } catch (error) {
+    console.error('Error fetching bill items:', error);
     throw error;
   }
 };

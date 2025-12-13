@@ -1,0 +1,25 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { BillDetailView } from '@/components/bills/detail/BillDetailView';
+
+// Mark this route as dynamic (not prerendered)
+export const prerender = false;
+
+const { id } = Astro.params;
+
+// Validate that id is a number
+let billId: number;
+try {
+  billId = Number(id);
+  if (!id || isNaN(billId) || billId <= 0) {
+    billId = 0; // Invalid ID, will be handled by component
+  }
+} catch {
+  billId = 0; // Invalid ID, will be handled by component
+}
+---
+
+<Layout>
+  <BillDetailView billId={billId} client:load />
+</Layout>
+

@@ -154,6 +154,8 @@ export interface PendingVerificationItem extends Pick<BillItem, 'id' | 'quantity
 
 export type PendingVerificationResponse = PaginatedResponse<PendingVerificationItem>
 
+export type BillItemListResponse = PaginatedResponse<BillItemResponse>
+
 // ============================================================================
 // BILL DTOs
 // ============================================================================
@@ -169,10 +171,15 @@ export interface BillResponse extends Pick<Bill, 'id' | 'bill_date' | 'status' |
   total_amount: number | string | null
   shop_id?: number | null
   shop?: ShopResponse | null
+  shop_name?: string | null
   items_count?: number
+  image_signed_url?: string | null
+  image_expires_at?: string | null
 }
 
-export interface BillDetailResponse extends Pick<Bill, 'id' | 'bill_date' | 'total_amount' | 'status' | 'image_url' | 'image_expires_at' | 'created_at' | 'updated_at'> {
+export interface BillDetailResponse extends Pick<Bill, 'id' | 'bill_date' | 'total_amount' | 'status' | 'created_at' | 'updated_at'> {
+  image_signed_url: string | null
+  image_expires_at: string | null
   shop: ShopResponse | null
   items: BillItemResponse[]
 }
