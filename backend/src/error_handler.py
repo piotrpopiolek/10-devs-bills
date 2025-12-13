@@ -22,6 +22,10 @@ from src.ocr.exceptions import (
     ExtractionError,
     AIServiceError,
 )
+from src.reports.exceptions import (
+    InvalidDateRangeError,
+    InvalidMonthFormatError,
+)
 
 def exception_handler(app: FastAPI) -> None:
     """
@@ -111,5 +115,19 @@ def exception_handler(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={"detail": "AI Service temporarily unavailable"},
+        )
+    
+    @app.exception_handler(InvalidDateRangeError)
+    async def invalid_date_range_handler(request: Request, exc: InvalidDateRangeError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+    
+    @app.exception_handler(InvalidMonthFormatError)
+    async def invalid_month_format_handler(request: Request, exc: InvalidMonthFormatError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
         )
 
