@@ -26,12 +26,53 @@ export const authService = {
     return response.json();
   },
 
+  async refreshToken(): Promise<TokenResponse> {
+    if (typeof window === 'undefined') {
+      throw new Error('Cannot refresh token on server side');
+    }
+
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      // If refresh fails, clear session
+      this.clearSession();
+      throw new Error(error.detail || 'Failed to refresh token');
+    }
+
+    const tokens = await response.json();
+    this.setSession(tokens);
+    return tokens;
+  },
+
+  getAccessToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('access_token');
+  },
+
+  getRefreshToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('refresh_token');
+  },
+
   setSession(tokens: TokenResponse) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', tokens.access_token);
       localStorage.setItem('refresh_token', tokens.refresh_token);
       localStorage.setItem('user', JSON.stringify(tokens.user));
       // Set cookie for Astro middleware (optional, but good for SSR)
+      // Access token expires in 15 minutes, cookie max-age should match
       document.cookie = `access_token=${tokens.access_token}; path=/; max-age=900; SameSite=Strict`;
     }
   },

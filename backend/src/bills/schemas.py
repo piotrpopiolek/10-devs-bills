@@ -180,6 +180,10 @@ class BillResponse(BillBase):
     id: int = Field(..., gt=0)
     created_at: datetime
     updated_at: datetime
+    shop_name: Optional[str] = Field(
+        None,
+        description="Name of the shop associated with this bill (loaded from shop relationship)"
+    )
     image_signed_url: Optional[str] = Field(
         None,
         description="Temporary signed URL for accessing the receipt image (valid for 1 hour)"

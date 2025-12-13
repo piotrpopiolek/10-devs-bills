@@ -1,4 +1,5 @@
 import type { ShopsQueryParams, ShopListResponse, ApiResponse } from '../../types';
+import { apiFetch } from '../api-client';
 
 export const getShops = async (params: ShopsQueryParams): Promise<ShopListResponse> => {
   const queryParams = new URLSearchParams();
@@ -16,7 +17,7 @@ export const getShops = async (params: ShopsQueryParams): Promise<ShopListRespon
   queryParams.append('skip', skip.toString());
 
   try {
-    const response = await fetch(`/api/shops?${queryParams.toString()}`);
+    const response = await apiFetch(`/api/shops?${queryParams.toString()}`);
     
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);

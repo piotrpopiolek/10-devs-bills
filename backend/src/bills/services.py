@@ -1,5 +1,6 @@
 from typing import Any
 from sqlalchemy import select, func
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
@@ -20,24 +21,30 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
 
     def _to_response(self, bill: Bill) -> BillResponse:
         """
-        Convert Bill model to BillResponse schema with signed URL.
+        Convert Bill model to BillResponse schema with signed URL and shop name.
         
         This method encapsulates the logic for generating signed URLs
         and converting Bill models to BillResponse schemas, following
         the DRY principle to avoid code duplication.
         
         Args:
-            bill: The Bill model instance to convert
+            bill: The Bill model instance to convert (shop relationship should be loaded via joinedload)
             
         Returns:
-            BillResponse with image_signed_url populated if image_url exists
+            BillResponse with image_signed_url and shop_name populated
         """
         image_signed_url = None
         if bill.image_url:
             image_signed_url = self.storage_service.get_signed_url(bill.image_url)
         
+        # Extract shop name if shop relationship is loaded
+        shop_name = None
+        if bill.shop is not None:
+            shop_name = bill.shop.name
+        
         response = BillResponse.model_validate(bill, from_attributes=True)
         response.image_signed_url = image_signed_url
+        response.shop_name = shop_name
         return response
 
     async def create(self, data: BillCreate) -> BillResponse:
@@ -67,7 +74,10 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         
         try:
             await self.session.commit()
-            await self.session.refresh(new_bill)
+            # Reload bill with shop relationship for response using eager loading
+            stmt = select(Bill).options(joinedload(Bill.shop)).where(Bill.id == new_bill.id)
+            result = await self.session.execute(stmt)
+            new_bill = result.scalar_one()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
@@ -90,8 +100,8 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
             BillAccessDeniedError: If bill exists but doesn't belong to user_id
             ResourceNotFoundError: If bill doesn't exist
         """
-        # Ownership check: get bill and verify it belongs to user_id
-        stmt = select(Bill).where(Bill.id == bill_id)
+        # Ownership check: get bill with shop relationship and verify it belongs to user_id
+        stmt = select(Bill).options(joinedload(Bill.shop)).where(Bill.id == bill_id)
         result = await self.session.execute(stmt)
         bill = result.scalar_one_or_none()
         
@@ -104,7 +114,7 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         update_data = data.model_dump(exclude_unset=True)
 
         if not update_data:
-            # Even if no updates, return BillResponse with signed URL
+            # Even if no updates, return BillResponse with signed URL and shop_name
             return self._to_response(bill)
 
         # Prevent changing ownership via update (user_id should not be updatable)
@@ -123,7 +133,10 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
 
         try:
             await self.session.commit()
-            await self.session.refresh(bill)
+            # Reload bill with shop relationship for response using eager loading
+            stmt = select(Bill).options(joinedload(Bill.shop)).where(Bill.id == bill.id)
+            result = await self.session.execute(stmt)
+            bill = result.scalar_one()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
@@ -145,19 +158,25 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         """
         Get bill by ID for a specific user and generate signed URL for the image.
         Enforces user isolation by checking ownership.
+        Uses eager loading (joinedload) to fetch shop relationship in one query.
         
         Args:
             bill_id: ID of the bill to retrieve
             user_id: ID of the user requesting the bill (must own the bill)
             
         Returns:
-            BillResponse with signed URL
+            BillResponse with signed URL and shop_name
             
         Raises:
             BillAccessDeniedError: If bill exists but doesn't belong to user_id
             ResourceNotFoundError: If bill doesn't exist
         """
-        stmt = select(Bill).where(Bill.id == bill_id)
+        # Use eager loading to fetch shop relationship in one query (LEFT JOIN)
+        stmt = (
+            select(Bill)
+            .options(joinedload(Bill.shop))
+            .where(Bill.id == bill_id)
+        )
         result = await self.session.execute(stmt)
         bill = result.scalar_one_or_none()
         
@@ -172,6 +191,7 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
     async def get_all(self, user_id: int, skip: int = 0, limit: int = 100) -> dict[str, Any]:
         """
         Get all bills for a specific user with pagination and generate signed URLs for images.
+        Uses eager loading (joinedload) to fetch shop relationships efficiently (avoids N+1 queries).
         
         Args:
             user_id: ID of the user whose bills to retrieve (required for user isolation)
@@ -186,9 +206,11 @@ class BillService(AppService[Bill, BillCreate, BillUpdate]):
         count_result = await self.session.execute(count_stmt)
         total = count_result.scalar() or 0
         
-        # Fetch bills filtered by user_id
+        # Fetch bills with eager loading of shop relationship (prevents N+1 queries)
+        # Uses LEFT JOIN to load shop data in a single query
         stmt = (
             select(Bill)
+            .options(joinedload(Bill.shop))
             .where(Bill.user_id == user_id)
             .offset(skip)
             .limit(limit)

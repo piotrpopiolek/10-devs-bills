@@ -1,12 +1,12 @@
 from typing import Sequence, List, Optional, Any
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
 from src.common.services import AppService
 from src.bill_items.models import BillItem, VerificationSource
-from src.bill_items.schemas import BillItemCreate, BillItemUpdate
+from src.bill_items.schemas import BillItemCreate, BillItemUpdate, BillItemResponse
 from src.common.exceptions import ResourceNotFoundError, BillAccessDeniedError
 from src.bills.models import Bill
 from src.product_indexes.models import ProductIndex
@@ -16,7 +16,35 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=BillItem, session=session)
 
-    async def create(self, data: BillItemCreate) -> BillItem:
+    def _to_response(self, bill_item: BillItem) -> BillItemResponse:
+        """
+        Convert BillItem model to BillItemResponse schema with index and category names.
+        
+        This method encapsulates the logic for converting BillItem models 
+        to BillItemResponse schemas, following the DRY principle.
+        
+        Args:
+            bill_item: The BillItem model instance to convert (index and category relationships should be loaded via joinedload)
+            
+        Returns:
+            BillItemResponse with index_name and category_name populated
+        """
+        # Extract index name if index relationship is loaded
+        index_name = None
+        if bill_item.index is not None:
+            index_name = bill_item.index.name
+        
+        # Extract category name if category relationship is loaded
+        category_name = None
+        if bill_item.category is not None:
+            category_name = bill_item.category.name
+        
+        response = BillItemResponse.model_validate(bill_item, from_attributes=True)
+        response.index_name = index_name
+        response.category_name = category_name
+        return response
+
+    async def create(self, data: BillItemCreate) -> BillItemResponse:
         # Bill Existence Check (Referential Integrity check before DB hit)
         await self._ensure_exists(model=Bill, field=Bill.id, value=data.bill_id, resource_name="Bill")
 
@@ -43,14 +71,24 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         
         try:
             await self.session.commit()
-            await self.session.refresh(new_bill_item)
+            # Reload bill item with index and category relationships for response using eager loading
+            stmt = (
+                select(BillItem)
+                .options(
+                    joinedload(BillItem.index),
+                    joinedload(BillItem.category)
+                )
+                .where(BillItem.id == new_bill_item.id)
+            )
+            result = await self.session.execute(stmt)
+            new_bill_item = result.scalar_one()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
 
-        return new_bill_item
+        return self._to_response(new_bill_item)
 
-    async def update(self, bill_item_id: int, data: BillItemUpdate, user_id: Optional[int] = None) -> BillItem:
+    async def update(self, bill_item_id: int, data: BillItemUpdate, user_id: Optional[int] = None) -> BillItemResponse:
         """
         Aktualizuje BillItem z opcjonalną weryfikacją ownership.
         
@@ -65,13 +103,26 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
             user_id: Opcjonalny ID użytkownika do weryfikacji ownership (jeśli None, pomija sprawdzenie)
             
         Returns:
-            BillItem: Zaktualizowany obiekt
+            BillItemResponse: Zaktualizowany obiekt z index_name i category_name
             
         Raises:
             ResourceNotFoundError: Jeśli BillItem nie istnieje
             BillAccessDeniedError: Jeśli user_id podane i BillItem nie należy do użytkownika
         """
-        bill_item = await self.get_by_id(bill_item_id)
+        # Get bill item with eager loading of relationships
+        stmt = (
+            select(BillItem)
+            .options(
+                joinedload(BillItem.index),
+                joinedload(BillItem.category)
+            )
+            .where(BillItem.id == bill_item_id)
+        )
+        result = await self.session.execute(stmt)
+        bill_item = result.scalar_one_or_none()
+        
+        if not bill_item:
+            raise ResourceNotFoundError("BillItem", bill_item_id)
         
         # Ownership verification (jeśli user_id podane)
         if user_id is not None:
@@ -89,7 +140,7 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         update_data = data.model_dump(exclude_unset=True)
 
         if not update_data:
-            return bill_item
+            return self._to_response(bill_item)
 
         # Bill Existence Check (if bill_id is being updated)
         if "bill_id" in update_data and update_data["bill_id"] != bill_item.bill_id:
@@ -107,12 +158,22 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
 
         try:
             await self.session.commit()
-            await self.session.refresh(bill_item)
+            # Reload bill item with index and category relationships for response using eager loading
+            stmt = (
+                select(BillItem)
+                .options(
+                    joinedload(BillItem.index),
+                    joinedload(BillItem.category)
+                )
+                .where(BillItem.id == bill_item.id)
+            )
+            result = await self.session.execute(stmt)
+            bill_item = result.scalar_one()
         except IntegrityError as e:
             await self.session.rollback()
             raise e
 
-        return bill_item
+        return self._to_response(bill_item)
     
     async def find_unindexed_verified_items_for_candidate(
         self,
@@ -144,7 +205,7 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         """
         stmt = (
             select(BillItem)
-            .options(selectinload(BillItem.bill))  # Eager load relacji bill
+            .options(joinedload(BillItem.bill))  # Eager load relacji bill
             .where(
                 BillItem.is_verified == True,
                 BillItem.verification_source == VerificationSource.USER.value,
@@ -248,12 +309,13 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         count_result = await self.session.execute(count_stmt)
         total = count_result.scalar() or 0
         
-        # Fetch items with eager loading relacji (index, category)
+        # Fetch items with eager loading of index and category relationships (prevents N+1 queries)
+        # Uses LEFT JOIN to load index and category data in a single query
         stmt = (
             select(BillItem)
             .options(
-                selectinload(BillItem.index),  # Eager load ProductIndex
-                selectinload(BillItem.category)  # Eager load Category
+                joinedload(BillItem.index),  # Eager load ProductIndex
+                joinedload(BillItem.category)  # Eager load Category
             )
             .where(BillItem.bill_id == bill_id)
             .offset(skip)
@@ -264,15 +326,95 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         result = await self.session.execute(stmt)
         items = result.scalars().all()
         
+        # Convert to response schemas with index_name and category_name
+        items_with_names = [
+            self._to_response(item) for item in items
+        ]
+        
         return {
-            "items": items,
+            "items": items_with_names,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+
+    async def get_by_id(self, bill_item_id: int) -> BillItemResponse:
+        """
+        Get bill item by ID with index and category relationships loaded.
+        Overrides base method to add eager loading and convert to response schema.
+        
+        Args:
+            bill_item_id: ID of the bill item to retrieve
+            
+        Returns:
+            BillItemResponse with index_name and category_name populated
+            
+        Raises:
+            ResourceNotFoundError: If bill item doesn't exist
+        """
+        # Use eager loading to fetch index and category relationships in one query (LEFT JOIN)
+        stmt = (
+            select(BillItem)
+            .options(
+                joinedload(BillItem.index),
+                joinedload(BillItem.category)
+            )
+            .where(BillItem.id == bill_item_id)
+        )
+        result = await self.session.execute(stmt)
+        bill_item = result.scalar_one_or_none()
+        
+        if not bill_item:
+            raise ResourceNotFoundError("BillItem", bill_item_id)
+        
+        return self._to_response(bill_item)
+    
+    async def get_all(self, skip: int = 0, limit: int = 100) -> dict[str, Any]:
+        """
+        Get all bill items with pagination and eager loading of index and category relationships.
+        Uses eager loading (joinedload) to fetch relationships efficiently (avoids N+1 queries).
+        
+        Args:
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            
+        Returns:
+            Dictionary with paginated bill items and index_name/category_name populated
+        """
+        # Count total items
+        count_stmt = select(func.count()).select_from(BillItem)
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+        
+        # Fetch items with eager loading of index and category relationships (prevents N+1 queries)
+        stmt = (
+            select(BillItem)
+            .options(
+                joinedload(BillItem.index),
+                joinedload(BillItem.category)
+            )
+            .offset(skip)
+            .limit(limit)
+            .order_by(BillItem.id)
+        )
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        
+        # Convert to response schemas with index_name and category_name
+        items_with_names = [
+            self._to_response(item) for item in items
+        ]
+        
+        return {
+            "items": items_with_names,
             "total": total,
             "skip": skip,
             "limit": limit
         }
 
     async def delete(self, bill_item_id: int) -> None:
-        bill_item = await self.get_by_id(bill_item_id)
+        # Use base class method to get model (not response) for deletion
+        bill_item = await super().get_by_id(bill_item_id)
         
         self.session.delete(bill_item)
         

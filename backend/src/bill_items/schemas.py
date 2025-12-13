@@ -164,6 +164,14 @@ class BillItemUpdate(AppBaseModel, BillItemValidationMixin):
 class BillItemResponse(BillItemBase):
     id: int = Field(..., gt=0)
     created_at: datetime
+    index_name: Optional[str] = Field(
+        None,
+        description="Name of the product index associated with this bill item (loaded from index relationship)"
+    )
+    category_name: Optional[str] = Field(
+        None,
+        description="Name of the category associated with this bill item (loaded from category relationship)"
+    )
 
 class BillItemListResponse(PaginatedResponse[BillItemResponse]):
     pass

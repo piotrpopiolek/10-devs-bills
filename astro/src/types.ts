@@ -122,8 +122,21 @@ export interface BillItemVerifyRequest {
   notes?: string
 }
 
-export interface BillItemResponse extends Pick<BillItem, 'id' | 'quantity' | 'unit_price' | 'total_price' | 'original_text' | 'confidence_score' | 'is_verified' | 'verification_source'> {
-  product: ProductResponse | null
+export interface BillItemResponse {
+  id: number
+  quantity: string
+  unit_price: string
+  total_price: string
+  original_text: string | null
+  confidence_score: string | null
+  is_verified: boolean
+  verification_source: VerificationSource
+  bill_id: number
+  index_id: number | null
+  index_name: string | null
+  category_id: number | null
+  category_name: string | null
+  created_at: string
 }
 
 export interface BillItemVerifyResponse extends BillItemResponse {

@@ -1,4 +1,5 @@
 import type { BillsQueryParams, BillListResponse, ApiResponse } from '../../types';
+import { apiFetch } from '../api-client';
 
 export const getBills = async (params: BillsQueryParams): Promise<BillListResponse> => {
   const queryParams = new URLSearchParams();
@@ -28,7 +29,7 @@ export const getBills = async (params: BillsQueryParams): Promise<BillListRespon
   }
 
   try {
-    const response = await fetch(`/api/bills?${queryParams.toString()}`);
+    const response = await apiFetch(`/api/bills?${queryParams.toString()}`);
     
     if (!response.ok) {
       if (response.status === 401) {

@@ -1,4 +1,5 @@
 import type { CategoriesQueryParams, CategoryListResponse, ApiResponse } from '../../types';
+import { apiFetch } from '../api-client';
 
 export const getCategories = async (params: CategoriesQueryParams = {}): Promise<CategoryListResponse> => {
   const queryParams = new URLSearchParams();
@@ -12,7 +13,7 @@ export const getCategories = async (params: CategoriesQueryParams = {}): Promise
   queryParams.append('skip', skip.toString());
 
   try {
-    const response = await fetch(`/api/categories?${queryParams.toString()}`);
+    const response = await apiFetch(`/api/categories?${queryParams.toString()}`);
     
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
