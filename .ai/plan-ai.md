@@ -94,11 +94,14 @@ Moduł wymaga:
 
 ### 3.1. Główny flow normalizacji
 
+**UWAGA:** Ten diagram pokazuje tylko proces normalizacji nazwy produktu. Kategoryzacja jest osobnym procesem (patrz sekcja 4).
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Input: OCRItem                                             │
 │  - original_text: "Mleko 3.2% 1L"                           │
-│  - category_suggestion: "Nabiał"                           │
+│  - category_suggestion: "Nabiał" (używane tylko jako      │
+│                          opcjonalne filtrowanie)           │
 │  - confidence_score: 0.95                                    │
 └─────────────────────────────────────────────────────────────┘
                           │
@@ -114,6 +117,9 @@ Moduł wymaga:
         ┌─────────────────────────────────┐
         │  Step 1: Sprawdź aliasy         │
         │  (ProductIndexAlias)            │
+        │  - User + Shop specific         │
+        │  - Shop specific                │
+        │  - Global                        │
         └─────────────────────────────────┘
                           │
             ┌─────────────┴─────────────┐
@@ -122,35 +128,43 @@ Moduł wymaga:
             │                           │
             ↓                           ↓
     ┌───────────────┐         ┌──────────────────┐
-    │ Zwróć index_id│         │ Step 2: Fuzzy    │
-    │ z aliasu      │         │ Search w         │
+    │ Zwróć         │         │ Step 2: Fuzzy    │
+    │ ProductIndex  │         │ Search w         │
     │               │         │ ProductIndex     │
+    │               │         │ (pg_trgm)       │
     └───────────────┘         └──────────────────┘
                                       │
                           ┌───────────┴───────────┐
                           │                       │
                       ZNALEZIONO              NIE ZNALEZIONO
+                      (similarity >= 0.6)     (similarity < 0.6)
                           │                       │
                           ↓                       ↓
-                  ┌───────────────┐      ┌──────────────────┐
-                  │ Zwróć index_id│      │ Step 3: AI        │
-                  │ z fuzzy match │      │ Categorization   │
-                  │ + zapisz alias│      │ (Gemini API)     │
-                  └───────────────┘      └──────────────────┘
-                                                │
-                                    ┌───────────┴───────────┐
-                                    │                       │
-                            KATEGORIA ZNALEZIONA      BRAK KATEGORII
-                            (confidence >= 0.8)       (confidence < 0.8)
-                                    │                       │
-                                    ↓                       ↓
-                            ┌───────────────┐      ┌──────────────┐
-                            │ Zwróć category│      │ Fallback do  │
-                            │ z AI          │      │ "Inne"       │
-                            └───────────────┘      └──────────────┘
+                  ┌───────────────┐      ┌──────────────┐
+                  │ Zwróć         │      │ Zwróć None   │
+                  │ ProductIndex  │      │ (produkt     │
+                  │ + zapisz alias│      │ nieznany)   │
+                  └───────────────┘      └──────────────┘
+                          │                       │
+                          └───────────┬───────────┘
+                                      │
+                          ┌───────────┴───────────┐
+                          │                       │
+                    NORMALIZACJA ZAKOŃCZONA      │
+                    (zwróć ProductIndex lub None) │
+                                                  │
+                          ┌───────────────────────┘
+                          │
+                          ↓
+        ┌─────────────────────────────────────────┐
+        │  KATEGORYZACJA (osobny proces)          │
+        │  Patrz sekcja 4: Workflow kategoryzacji │
+        └─────────────────────────────────────────┘
 ```
 
 ### 3.2. Szczegółowy algorytm normalizacji
+
+**WAŻNE:** Normalizacja nazwy produktu jest oddzielona od wyboru kategorii. Algorytm normalizacji skupia się wyłącznie na znalezieniu odpowiedniego `ProductIndex` na podstawie nazwy produktu z OCR. Wybór kategorii następuje osobno (patrz sekcja 4).
 
 #### Step 0: Pre-processing [MVP]
 
@@ -168,47 +182,188 @@ def _preprocess_text(raw_text: str) -> str:
 
 #### Step 1: Wyszukiwanie w aliasach (ProductIndexAlias)
 
-**Priorytet:** Najwyższy.
-**Optymalizacja:** W MVP używamy 3 zapytań (User+Shop -> Shop -> Global).
-**Uwaga:** Wymagany indeks funkcyjny `LOWER(raw_name)` [MVP].
+**Priorytet:** Najwyższy (najszybsze, najbardziej precyzyjne)
 
-Query SQL (koncepcyjne):
+```python
+async def _find_by_alias(
+    raw_name: str,
+    shop_id: Optional[int] = None,
+    user_id: Optional[int] = None
+) -> Optional[ProductIndex]:
+    """
+    Wyszukuje produkt po aliasie (original_text z OCR).
+
+    Strategia:
+    1. Najpierw szuka aliasów dla konkretnego użytkownika i sklepu
+    2. Potem szuka aliasów dla sklepu (bez użytkownika)
+    3. Na końcu szuka globalnych aliasów (bez shop_id i user_id)
+
+    Używa:
+    - Exact match na LOWER(raw_name) (case-insensitive)
+    - Indeks: idx_product_index_aliases_raw_name (GIN)
+    """
+```
+
+**Query SQL:**
 
 ```sql
--- Używa indeksu na LOWER(raw_name)
+-- Priorytet 1: User + Shop specific
 SELECT pi.* FROM product_indexes pi
 JOIN product_index_aliases pia ON pi.id = pia.index_id
-WHERE LOWER(pia.raw_name) = LOWER(:cleaned_text)
-  AND ... (logika priorytetów)
+WHERE LOWER(pia.raw_name) = LOWER(:raw_name)
+  AND pia.user_id = :user_id
+  AND pia.shop_id = :shop_id
+ORDER BY pia.confirmations_count DESC
+LIMIT 1;
+
+-- Priorytet 2: Shop specific (bez user_id)
+SELECT pi.* FROM product_indexes pi
+JOIN product_index_aliases pia ON pi.id = pia.index_id
+WHERE LOWER(pia.raw_name) = LOWER(:raw_name)
+  AND pia.shop_id = :shop_id
+  AND pia.user_id IS NULL
+ORDER BY pia.confirmations_count DESC
+LIMIT 1;
+
+-- Priorytet 3: Global (bez shop_id i user_id)
+SELECT pi.* FROM product_indexes pi
+JOIN product_index_aliases pia ON pi.id = pia.index_id
+WHERE LOWER(pia.raw_name) = LOWER(:raw_name)
+  AND pia.shop_id IS NULL
+  AND pia.user_id IS NULL
 ORDER BY pia.confirmations_count DESC
 LIMIT 1;
 ```
 
+**Dlaczego ta kolejność?**
+
+- Aliasy użytkownika są najbardziej precyzyjne (uczenie się per-user)
+- Aliasy sklepu są drugie (różne sklepy mogą mieć różne nazwy)
+- Globalne aliasy są fallbackiem
+
 #### Step 2: Fuzzy Search w ProductIndex
 
-**Priorytet:** Średni.
-**Zmiana w MVP:** Zwiększony threshold do 0.75-0.8. Dynamiczny threshold dla krótkich słów.
+**Priorytet:** Średni (gdy alias nie znaleziony)
 
 ```python
 async def _fuzzy_search_product(
     raw_name: str,
     category_suggestion: Optional[str] = None,
-    similarity_threshold: float = 0.75  # Zwiększone z 0.6 [MVP]
+    similarity_threshold: float = 0.6
 ) -> Optional[ProductIndex]:
     """
-    Wyszukuje produkt używając fuzzy search.
-    Dla krótkich słów (<5 znaków) threshold powinien być wyższy (np. 0.9).
+    Wyszukuje produkt używając fuzzy search (pg_trgm).
+
+    Strategia:
+    1. Używa pg_trgm similarity (similarity >= threshold)
+    2. Jeśli category_suggestion podane, filtruje po kategorii (OPCJONALNIE - tylko jako pomocnicze filtrowanie)
+    3. Sortuje po podobieństwie (DESC)
+    4. Zwraca najlepszy match (jeśli similarity >= threshold)
+
+    UWAGA: category_suggestion jest tylko opcjonalnym filtrem pomocniczym.
+    Głównym celem jest znalezienie produktu po podobieństwie nazwy, nie po kategorii.
+
+    Używa:
+    - Indeks: idx_product_indexes_name_trgm (GIN z pg_trgm)
+    - Funkcja: similarity() z pg_trgm
     """
 ```
 
-#### Step 3: AI Categorization (Gemini API) [MVP]
+**Query SQL:**
 
-**Priorytet:** Wysoki (część MVP).
+```sql
+-- Wymaga: CREATE EXTENSION pg_trgm;
+
+-- Bez filtrowania po kategorii (PREFEROWANE - normalizacja nazwy bez wpływu kategorii)
+SELECT pi.*,
+       similarity(LOWER(pi.name), LOWER(:raw_name)) as sim_score
+FROM product_indexes pi
+WHERE similarity(LOWER(pi.name), LOWER(:raw_name)) >= :threshold
+ORDER BY sim_score DESC
+LIMIT 1;
+
+-- Z filtrowaniem po kategorii (OPCJONALNE - tylko gdy category_suggestion podane i chcemy zawęzić wyniki)
+SELECT pi.*,
+       similarity(LOWER(pi.name), LOWER(:raw_name)) as sim_score
+FROM product_indexes pi
+JOIN categories c ON pi.category_id = c.id
+WHERE similarity(LOWER(pi.name), LOWER(:raw_name)) >= :threshold
+  AND LOWER(c.name) = LOWER(:category_suggestion)
+ORDER BY sim_score DESC
+LIMIT 1;
+```
+
+**Parametry:**
+
+- `similarity_threshold = 0.6` - minimalne podobieństwo (60%)
+- Można dostosować w config (dla MVP: 0.6, dla production: 0.7)
+- Dla krótkich słów (<5 znaków) można użyć wyższego threshold (np. 0.9)
+
+**Wynik normalizacji:**
+
+Algorytm normalizacji kończy się na Step 2. Zwraca:
+
+- `ProductIndex` jeśli produkt został znaleziony (przez alias lub fuzzy search)
+- `None` jeśli produkt nie został znaleziony w słowniku
+
+**Uwaga:** Wybór kategorii dla produktu jest osobnym procesem (patrz sekcja 4: Workflow kategoryzacji produktu).
+
+## 4. Workflow kategoryzacji produktu
+
+**WAŻNE:** Kategoryzacja produktu jest oddzielona od normalizacji nazwy. Normalizacja (sekcja 3.2) odpowiada za znalezienie `ProductIndex` na podstawie nazwy. Kategoryzacja odpowiada za przypisanie kategorii do produktu.
+
+### 4.1. Przypisanie kategorii do produktu
+
+Kategoria produktu może pochodzić z:
+
+1. **ProductIndex.category_id** - jeśli produkt został znaleziony w słowniku (normalizacja zwróciła `ProductIndex`)
+2. **AI Category** - Gemini wybiera kategorię dla produktu z listy kategorii zdefiniowanej w bazie (gdy produkt nieznany)
+3. **Fallback "Inne"** - jeśli nic nie pasuje
+
+### 4.2. Strategia przypisania kategorii
+
+```python
+async def _assign_category(
+    product_index: Optional[ProductIndex],
+    cleaned_text: str,
+    category_suggestion: Optional[str] = None,
+    shop_name: Optional[str] = None
+) -> Category:
+    """
+    Przypisuje kategorię do produktu.
+
+    Priorytety:
+    1. Jeśli product_index ma category_id → użyj tej kategorii
+    2. Jeśli product_index jest None → użyj AI Categorization (Gemini API)
+    3. W przeciwnym razie → użyj "Inne"
+    """
+    # Priorytet 1: Kategoria z ProductIndex
+    if product_index and product_index.category_id:
+        return await self.category_service.get_by_id(product_index.category_id)
+
+    # Priorytet 2: AI Categorization (gdy produkt nieznany)
+    if not product_index:
+        ai_category_id = await self._ai_categorize_product(
+            cleaned_text=cleaned_text,
+            category_suggestion=category_suggestion,
+            shop_name=shop_name,
+            available_categories=await self.category_service.get_all_categories()
+        )
+        if ai_category_id:
+            return await self.category_service.get_by_id(ai_category_id)
+
+    # Priorytet 3: Fallback
+    return await self.category_service.get_fallback_category()
+```
+
+### 4.3. AI Categorization (Gemini API) [MVP]
+
+**Priorytet:** Wysoki (część MVP).  
 **Status:** Implementacja w MVP z użyciem Gemini API.
 
 **Strategia:**
 
-Jeśli ani alias, ani fuzzy search nie zwróciły produktu, używamy Gemini API do zaproponowania kategorii na podstawie:
+Używamy Gemini API do zaproponowania kategorii dla produktu nieznanego systemowi (gdy normalizacja nie znalazła `ProductIndex`). AI wybiera kategorię na podstawie:
 
 - Nazwy produktu (cleaned_text)
 - Sugestii kategorii z OCR (category_suggestion)
@@ -355,67 +510,82 @@ fallback_category = await category_service.get_fallback_category()
 - **Rate Limiting:** Uwzględnij limity API Gemini (requests per minute) - rozważ queue/batching w Post-MVP.
 - **Caching:** W Post-MVP rozważ cache dla częstych zapytań AI (np. Redis) - "Mleko" zawsze będzie "Nabiał".
 
-**Integracja w normalize_item():**
+### 4.4. Integracja normalizacji i kategoryzacji
 
 ```python
-# W normalize_item() - zaktualizowana implementacja
-# Uwaga: Metoda normalize_item() musi przyjmować shop_name jako parametr
-
 async def normalize_item(
     self,
     ocr_item: OCRItem,
     shop_id: Optional[int] = None,
-    shop_name: Optional[str] = None,  # NOWY PARAMETR dla AI Categorization
+    shop_name: Optional[str] = None,
     user_id: Optional[int] = None,
     save_alias: bool = True
 ) -> NormalizedItem:
-    # ... (Step 0, 1, 2 jak wcześniej) ...
+    """
+    Normalizuje nazwę produktu i przypisuje kategorię.
 
-    if not product_from_fuzzy:
-        # Step 3: AI Categorization (Gemini API)
-        available_categories = await self.category_service.get_all_categories()
-        ai_category_id = await self._ai_categorize_product(
-            cleaned_text=cleaned_text,
-            category_suggestion=ocr_item.category_suggestion,
-            shop_name=shop_name,  # Kontekst sklepu dla AI
-            available_categories=available_categories
+    Proces:
+    1. Pre-processing tekstu (Step 0)
+    2. Normalizacja nazwy (Step 1: aliasy, Step 2: fuzzy search)
+    3. Przypisanie kategorii (sekcja 4)
+    """
+    # Step 0: Pre-processing
+    cleaned_text = self._preprocess_text(ocr_item.name)
+
+    # Step 1: Wyszukiwanie w aliasach
+    product_index = await self._find_by_alias(
+        raw_name=cleaned_text,
+        shop_id=shop_id,
+        user_id=user_id
+    )
+
+    # Step 2: Fuzzy Search (jeśli alias nie znaleziony)
+    if not product_index:
+        product_index = await self._fuzzy_search_product(
+            raw_name=cleaned_text,
+            category_suggestion=ocr_item.category_suggestion,  # Opcjonalne filtrowanie
+            similarity_threshold=0.6
         )
 
-        if ai_category_id:
-            return NormalizedItem(
-                original_text=ocr_item.name,
-                normalized_name=None,  # Produkt nieznany, tylko kategoria
-                quantity=ocr_item.quantity,
-                unit_price=ocr_item.unit_price or Decimal("0.0"),
-                total_price=ocr_item.total_price,
-                category_id=ai_category_id,
-                product_index_id=None,
-                confidence_score=ocr_item.confidence_score * 0.7,  # AI match penalty
-                is_confident=True
+        # Zapis aliasu po znalezieniu przez fuzzy search
+        if product_index and save_alias:
+            await self._save_alias(
+                raw_name=cleaned_text,
+                index_id=product_index.id,
+                shop_id=shop_id,
+                user_id=user_id
             )
 
-        # Fallback: produkt nieznany systemowi (AI nie znalazło kategorii)
-        fallback_category = await self.category_service.get_fallback_category()
-        return NormalizedItem(
-            original_text=ocr_item.name,
-            normalized_name=None,
-            quantity=ocr_item.quantity,
-            unit_price=ocr_item.unit_price or Decimal("0.0"),
-            total_price=ocr_item.total_price,
-            category_id=fallback_category.id,
-            product_index_id=None,
-            confidence_score=ocr_item.confidence_score * 0.5,
-            is_confident=False
-        )
+    # Kategoryzacja (osobny proces)
+    category = await self._assign_category(
+        product_index=product_index,
+        cleaned_text=cleaned_text,
+        category_suggestion=ocr_item.category_suggestion,
+        shop_name=shop_name
+    )
+
+    return NormalizedItem(
+        original_text=ocr_item.name,
+        normalized_name=product_index.name if product_index else None,
+        quantity=ocr_item.quantity,
+        unit_price=ocr_item.unit_price or Decimal("0.0"),
+        total_price=ocr_item.total_price,
+        category_id=category.id,
+        product_index_id=product_index.id if product_index else None,
+        confidence_score=ocr_item.confidence_score,
+        is_confident=product_index is not None
+    )
 ```
 
-## 4. Workflow uczenia się (Learning)
+---
 
-### 4.1. Zapis aliasu po weryfikacji użytkownika
+## 5. Workflow uczenia się (Learning)
+
+### 5.1. Zapis aliasu po weryfikacji użytkownika
 
 Gdy użytkownik weryfikuje BillItem, system zapisuje alias.
 
-### 4.2. Automatyczny zapis aliasu po normalizacji (UPSERT) [MVP]
+### 5.2. Automatyczny zapis aliasu po normalizacji (UPSERT) [MVP]
 
 Zamiast logiki "Check-then-Act" (SELECT potem INSERT), używamy UPSERT, aby zapewnić atomowość w środowisku asynchronicznym.
 
@@ -431,9 +601,9 @@ DO UPDATE SET
 
 ---
 
-## 5. Integracja z Receipt Processing Pipeline
+## 6. Integracja z Receipt Processing Pipeline
 
-### 5.1. Miejsce w pipeline i Transakcyjność [MVP]
+### 6.1. Miejsce w pipeline i Transakcyjność [MVP]
 
 **Krytyczne:** Nie wywoływać zewnętrznych API (Gemini) wewnątrz otwartej transakcji DB.
 
@@ -460,7 +630,7 @@ async def process_receipt(self, bill_id: int) -> None:
          await self._create_bill_items(bill_id, normalized_items)
 ```
 
-### 5.2. Refaktoryzacja `_create_bill_items` [MVP]
+### 6.2. Refaktoryzacja `_create_bill_items` [MVP]
 
 Metoda `_create_bill_items` musi przyjmować listę `NormalizedItem`. Logika biznesowa (wyliczanie cen, walidacja ujemnych cen) powinna zostać przeniesiona do mappera lub serwisu AI.
 
@@ -474,9 +644,9 @@ async def _create_bill_items(self, bill_id: int, items: List[NormalizedItem]) ->
 
 ---
 
-## 6. API i interfejsy
+## 7. API i interfejsy
 
-### 6.1. Zmiany w CategoryService [MVP]
+### 7.1. Zmiany w CategoryService [MVP]
 
 ```python
 async def get_fallback_category(self) -> Category:
@@ -583,7 +753,7 @@ Zastąpienie `pg_trgm` wyszukiwaniem wektorowym (`pgvector`) dla lepszego zrozum
   - [x] Wywołanie Gemini API z structured output (JSON)
   - [x] Walidacja odpowiedzi (confidence threshold, istnienie kategorii)
   - [x] Retry pattern (tenacity) dla odporności na błędy
-- [x] Zintegrować AI Categorization w `normalize_item()` (Step 3)
+- [x] Zintegrować AI Categorization w `_assign_category()` (osobny proces od normalizacji)
 - [x] Dodać fallback do kategorii "Inne" jeśli AI nie zwróciło wyniku
 - [x] `CategoryService.get_fallback_category()`
 
@@ -619,8 +789,8 @@ Zastąpienie `pg_trgm` wyszukiwaniem wektorowym (`pgvector`) dla lepszego zrozum
 
    - Dodano sprawdzenie `len(available_categories) == 0`
 
-3. ✅ **Walidacja `category_id` przed użyciem w `normalize_item()`**
-   - Dodano sprawdzenie istnienia kategorii w DB przed zwróceniem `NormalizedItem`
+3. ✅ **Walidacja `category_id` przed użyciem w `_assign_category()`**
+   - Dodano sprawdzenie istnienia kategorii w DB przed zwróceniem `Category`
    - Fallback do kategorii "Inne" jeśli AI zwróciło nieprawidłowe ID
 
 ### Pozostałe sugestie (do rozważenia):

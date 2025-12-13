@@ -1,0 +1,132 @@
+import type { APIRoute } from 'astro';
+import { z } from 'zod';
+import type { BillListResponse, ApiResponse, ProcessingStatus } from '@/types';
+
+// Mark this route as dynamic (not prerendered)
+export const prerender = false;
+
+// Zod schema for query parameters validation
+const BillsQuerySchema = z.object({
+  status: z.enum(['pending', 'processing', 'completed', 'error']).optional(),
+  shop_id: z.coerce.number().int().positive().optional(),
+  date_from: z.string().optional(),
+  date_to: z.string().optional(),
+  skip: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const GET: APIRoute = async ({ request, cookies }) => {
+  const url = new URL(request.url);
+  
+  // Parse and validate query parameters using Zod
+  const parseResult = BillsQuerySchema.safeParse({
+    status: url.searchParams.get('status') || undefined,
+    shop_id: url.searchParams.get('shop_id') || undefined,
+    date_from: url.searchParams.get('date_from') || undefined,
+    date_to: url.searchParams.get('date_to') || undefined,
+    skip: url.searchParams.get('skip') || '0',
+    limit: url.searchParams.get('limit') || '20',
+  });
+
+  // Early return for validation errors
+  if (!parseResult.success) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Invalid query parameters',
+        errors: parseResult.error.errors,
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  const { status, shop_id, date_from, date_to, skip, limit } = parseResult.data;
+  
+  // Get access token from cookies or Authorization header
+  const accessToken = cookies.get('access_token')?.value || 
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+
+  if (!accessToken) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Unauthorized - missing access token',
+      }),
+      {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+  
+  const queryParams = new URLSearchParams();
+  queryParams.append('skip', skip.toString());
+  queryParams.append('limit', limit.toString());
+  
+  if (status) {
+    queryParams.append('status', status);
+  }
+  
+  if (shop_id !== undefined) {
+    queryParams.append('shop_id', shop_id.toString());
+  }
+  
+  if (date_from) {
+    queryParams.append('date_from', date_from);
+  }
+  
+  if (date_to) {
+    queryParams.append('date_to', date_to);
+  }
+
+  // Use environment variable for backend URL
+  const BACKEND_URL = import.meta.env.BACKEND_URL;
+  const API_URL = `${BACKEND_URL}/bills`;
+
+  console.log(`Proxying request to: ${API_URL}/?${queryParams.toString()}`);
+
+  try {
+    const response = await fetch(`${API_URL}/?${queryParams.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Upstream API error: ${response.status} ${errorText}`);
+        return new Response(JSON.stringify({
+            success: false,
+            message: `Upstream API error: ${response.status}`
+        }), { status: response.status });
+    }
+
+    const data = await response.json() as BillListResponse;
+    
+    // Return wrapped response
+    const apiResponse: ApiResponse<BillListResponse> = {
+      success: true,
+      data: data
+    };
+
+    return new Response(JSON.stringify(apiResponse), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown proxy error'
+    }), { status: 500 });
+  }
+};
+

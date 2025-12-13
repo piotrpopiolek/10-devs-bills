@@ -1,4 +1,4 @@
-from typing import Sequence, List, Optional
+from typing import Sequence, List, Optional, Any
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -199,6 +199,77 @@ class BillItemService(AppService[BillItem, BillItemCreate, BillItemUpdate]):
         await self.session.commit()
         
         return result.rowcount
+
+    async def get_by_bill_id(
+        self, 
+        bill_id: int, 
+        user_id: int, 
+        skip: int = 0, 
+        limit: int = 100
+    ) -> dict[str, Any]:
+        """
+        Pobiera wszystkie pozycje dla konkretnego rachunku z weryfikacją ownership.
+        
+        Most Koncepcyjny (PHP → Python):
+        W Symfony używałbyś ParamConverter do automatycznej weryfikacji ownership.
+        W FastAPI wstrzykujemy user_id i sprawdzamy przez relację Bill -> user_id.
+        To idiomatyczne podejście w Pythonie - jawne sprawdzenie uprawnień w serwisie.
+        
+        Args:
+            bill_id: ID rachunku
+            user_id: ID użytkownika (do weryfikacji ownership)
+            skip: Liczba pozycji do pominięcia (paginacja)
+            limit: Maksymalna liczba pozycji do zwrócenia
+            
+        Returns:
+            Dictionary z paginowanymi pozycjami i metadanymi
+            
+        Raises:
+            ResourceNotFoundError: Jeśli rachunek nie istnieje
+            BillAccessDeniedError: Jeśli rachunek nie należy do użytkownika
+        """
+        # Weryfikacja ownership: sprawdź czy Bill istnieje i należy do user_id
+        stmt = select(Bill).where(Bill.id == bill_id)
+        result = await self.session.execute(stmt)
+        bill = result.scalar_one_or_none()
+        
+        if not bill:
+            raise ResourceNotFoundError("Bill", bill_id)
+        
+        if bill.user_id != user_id:
+            raise BillAccessDeniedError(bill_id)
+        
+        # Count total items for this bill
+        count_stmt = (
+            select(func.count())
+            .select_from(BillItem)
+            .where(BillItem.bill_id == bill_id)
+        )
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+        
+        # Fetch items with eager loading relacji (index, category)
+        stmt = (
+            select(BillItem)
+            .options(
+                selectinload(BillItem.index),  # Eager load ProductIndex
+                selectinload(BillItem.category)  # Eager load Category
+            )
+            .where(BillItem.bill_id == bill_id)
+            .offset(skip)
+            .limit(limit)
+            .order_by(BillItem.id)
+        )
+        
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        
+        return {
+            "items": items,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     async def delete(self, bill_item_id: int) -> None:
         bill_item = await self.get_by_id(bill_item_id)

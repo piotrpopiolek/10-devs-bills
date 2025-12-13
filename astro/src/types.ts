@@ -152,9 +152,11 @@ export interface BillCreateRequest {
   shop_address?: string
 }
 
-export interface BillResponse extends Pick<Bill, 'id' | 'bill_date' | 'total_amount' | 'status' | 'created_at'> {
-  shop: ShopResponse | null
-  items_count: number
+export interface BillResponse extends Pick<Bill, 'id' | 'bill_date' | 'status' | 'created_at'> {
+  total_amount: number | string | null
+  shop_id?: number | null
+  shop?: ShopResponse | null
+  items_count?: number
 }
 
 export interface BillDetailResponse extends Pick<Bill, 'id' | 'bill_date' | 'total_amount' | 'status' | 'image_url' | 'image_expires_at' | 'created_at' | 'updated_at'> {

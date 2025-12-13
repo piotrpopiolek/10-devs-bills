@@ -13,6 +13,8 @@ from src.bills.schemas import (
 )
 from src.bills.services import BillService
 from src.storage.service import StorageService, get_storage_service
+from src.bill_items.services import BillItemService
+from src.bill_items.schemas import BillItemListResponse
 
 router = APIRouter()
 
@@ -40,6 +42,33 @@ async def get_bill(bill_id: int, service: ServiceDependency, user: CurrentUser):
     Enforces user isolation - returns 403 if bill doesn't belong to the current user.
     """
     return await service.get_by_id_and_user(bill_id=bill_id, user_id=user.id)
+
+
+@router.get(
+    "/{bill_id}/items",
+    response_model=BillItemListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get all items for a specific bill"
+)
+async def get_bill_items(
+    bill_id: int,
+    service: ServiceDependency,
+    user: CurrentUser,
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(100, ge=1, le=100, description="Max number of items to return")
+):
+    """
+    Get all items for a specific bill.
+    Automatically verifies ownership - returns 403 if bill doesn't belong to the current user.
+    """
+    # Utwórz BillItemService z tą samą sesją
+    bill_item_service = BillItemService(service.session)
+    return await bill_item_service.get_by_bill_id(
+        bill_id=bill_id,
+        user_id=user.id,
+        skip=skip,
+        limit=limit
+    )
 
 
 @router.post("/", response_model=BillResponse, status_code=status.HTTP_201_CREATED, summary="Create a new bill", dependencies=[Depends(check_monthly_bills_limit)])
