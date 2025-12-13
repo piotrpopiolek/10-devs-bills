@@ -60,6 +60,16 @@ class CategoryResponse(CategoryBase):
     id: int = Field(..., gt=0)
     created_at: datetime
     updated_at: datetime
+    products_count: int = Field(
+        0,
+        ge=0,
+        description="Number of products (ProductIndex) associated with this category"
+    )
+    bill_items_count: int = Field(
+        0,
+        ge=0,
+        description="Number of bill items associated with this category"
+    )
 
 class CategoryListResponse(PaginatedResponse[CategoryResponse]):
     pass

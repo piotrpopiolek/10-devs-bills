@@ -26,6 +26,7 @@ class Category(Base):
         parent: Reference to parent category (self-referential)
         children: List of child categories
         product_indexes: List of products in this category
+        bill_items: List of bill items categorized in this category
     """
     __tablename__ = "categories"
     __table_args__ = (
@@ -41,7 +42,7 @@ class Category(Base):
     parent: Mapped[Optional['Category']] = relationship('Category', foreign_keys=[parent_id], remote_side=[id], back_populates='children')
     children: Mapped[list['Category']] = relationship('Category', foreign_keys=[parent_id], back_populates='parent')
     product_indexes: Mapped[list['ProductIndex']] = relationship('ProductIndex', back_populates='category')
-    bill_items_categorized: Mapped[List['BillItem']] = relationship('BillItem', back_populates='category')
+    bill_items: Mapped[List['BillItem']] = relationship('BillItem', back_populates='category')
     
 
 

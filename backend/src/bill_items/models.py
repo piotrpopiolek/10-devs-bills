@@ -72,4 +72,4 @@ class BillItem(Base):
     bill: Mapped['Bill'] = relationship('Bill', back_populates='bill_items')
     index: Mapped[Optional['ProductIndex']] = relationship('ProductIndex', back_populates='bill_items')
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=True)
-    category: Mapped[Optional['Category']] = relationship('Category', back_populates='bill_items_categorized')
+    category: Mapped[Optional['Category']] = relationship('Category', back_populates='bill_items')

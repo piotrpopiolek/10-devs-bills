@@ -94,6 +94,7 @@ export type ShopListResponse = PaginatedResponse<ShopResponse>
 export interface CategoryResponse extends Pick<Category, 'id' | 'name' | 'parent_id' | 'created_at'> {
   children: CategoryResponse[]
   products_count: number
+  bill_items_count: number
 }
 
 export type CategoryListResponse = PaginatedResponse<CategoryResponse>
@@ -389,4 +390,18 @@ export interface ReportsQueryParams {
   date?: string
   week_start?: string
   month?: string
+}
+
+// ============================================================================
+// VIEW MODEL TYPES
+// ============================================================================
+
+export interface CategoryTreeNode {
+  id: number
+  name: string
+  parent_id: number | null
+  created_at: string
+  products_count: number
+  bill_items_count: number
+  children: CategoryTreeNode[]
 }

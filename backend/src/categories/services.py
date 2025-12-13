@@ -1,17 +1,20 @@
 import logging
+from typing import Any
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.services import AppService
 from src.categories.models import Category
-from src.categories.schemas import CategoryCreate, CategoryUpdate
+from src.categories.schemas import CategoryCreate, CategoryUpdate, CategoryResponse
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
 from src.categories.exceptions import (
     CategoryCycleError,
     CategoryHasChildrenError
 )
 from src.config import settings
+from src.product_indexes.models import ProductIndex
+from src.bill_items.models import BillItem
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,42 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(model=Category, session=session)
 
-    async def create(self, data: CategoryCreate) -> Category:
+    async def _to_response(self, category: Category) -> CategoryResponse:
+        """
+        Convert Category model to CategoryResponse schema with counts of related products and bill items.
+        
+        This method encapsulates the logic for counting related entities
+        and converting Category models to CategoryResponse schemas, following
+        the DRY principle to avoid code duplication.
+        
+        Args:
+            category: The Category model instance to convert
+            
+        Returns:
+            CategoryResponse with products_count and bill_items_count populated
+        """
+        # Count related products (ProductIndex)
+        products_count_stmt = (
+            select(func.count(ProductIndex.id))
+            .where(ProductIndex.category_id == category.id)
+        )
+        products_count_result = await self.session.execute(products_count_stmt)
+        products_count = products_count_result.scalar() or 0
+        
+        # Count related bill items
+        bill_items_count_stmt = (
+            select(func.count(BillItem.id))
+            .where(BillItem.category_id == category.id)
+        )
+        bill_items_count_result = await self.session.execute(bill_items_count_stmt)
+        bill_items_count = bill_items_count_result.scalar() or 0
+        
+        response = CategoryResponse.model_validate(category, from_attributes=True)
+        response.products_count = products_count
+        response.bill_items_count = bill_items_count
+        return response
+
+    async def create(self, data: CategoryCreate) -> CategoryResponse:
         await self._ensure_unique(model=Category, field=Category.name, value=data.name, resource_name="Category", field_name="name")
 
         # Parent Existence Check (Referential Integrity check before DB hit)
@@ -42,15 +80,15 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
             await self.session.rollback()
             raise ResourceAlreadyExistsError("Category", "name", data.name) from e
 
-        return new_category
+        return await self._to_response(new_category)
 
-    async def update(self, category_id: int, data: CategoryUpdate) -> Category:
+    async def update(self, category_id: int, data: CategoryUpdate) -> CategoryResponse:
         category = await self.get_by_id(category_id)
 
         update_data = data.model_dump(exclude_unset=True)
 
         if not update_data:
-            return category
+            return await self._to_response(category)
 
         if "name" in update_data and update_data["name"] != category.name:
             await self._ensure_unique(model=Category, field=Category.name, value=update_data["name"], resource_name="Category", field_name="name")
@@ -76,7 +114,7 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
             await self.session.rollback()
             raise ResourceAlreadyExistsError("Category", "name", data.name) from e
 
-        return category
+        return await self._to_response(category)
 
     async def delete(self, category_id: int) -> None:
 
@@ -138,6 +176,86 @@ class CategoryService(AppService[Category, CategoryCreate, CategoryUpdate]):
             logger.info(f"Utworzono kategorię fallback: {fallback_name}")
             
         return category
+
+    async def get_by_id(self, category_id: int) -> CategoryResponse:
+        """
+        Get category by ID with counts of related products and bill items.
+        Overrides base method to add counting and convert to response schema.
+        
+        Args:
+            category_id: ID of the category to retrieve
+            
+        Returns:
+            CategoryResponse with products_count and bill_items_count populated
+            
+        Raises:
+            ResourceNotFoundError: If category doesn't exist
+        """
+        category = await super().get_by_id(category_id)
+        return await self._to_response(category)
+    
+    async def get_all(self, skip: int = 0, limit: int = 100) -> dict[str, Any]:
+        """
+        Get all categories with pagination and counts of related products and bill items.
+        Uses efficient subqueries to count related entities in a single query per category.
+        
+        Args:
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            
+        Returns:
+            Dictionary with paginated categories and products_count/bill_items_count populated
+        """
+        # Count total categories
+        count_stmt = select(func.count()).select_from(Category)
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+        
+        # Subqueries for counting related entities
+        products_count_subq = (
+            select(func.count(ProductIndex.id))
+            .where(ProductIndex.category_id == Category.id)
+            .scalar_subquery()
+        )
+        
+        bill_items_count_subq = (
+            select(func.count(BillItem.id))
+            .where(BillItem.category_id == Category.id)
+            .scalar_subquery()
+        )
+        
+        # Fetch categories with counts using subqueries
+        stmt = (
+            select(
+                Category,
+                products_count_subq.label('products_count'),
+                bill_items_count_subq.label('bill_items_count')
+            )
+            .offset(skip)
+            .limit(limit)
+            .order_by(Category.name)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        
+        # Convert to response schemas with counts
+        categories_with_counts = []
+        for row in rows:
+            category = row[0]
+            products_count = row[1] or 0
+            bill_items_count = row[2] or 0
+            
+            response = CategoryResponse.model_validate(category, from_attributes=True)
+            response.products_count = products_count
+            response.bill_items_count = bill_items_count
+            categories_with_counts.append(response)
+        
+        return {
+            "items": categories_with_counts,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     async def get_all_categories(self) -> list[Category]:
         """
