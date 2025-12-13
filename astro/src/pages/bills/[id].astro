@@ -1,9 +1,9 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import { BillDetailView } from '@/components/bills/detail/BillDetailView';
-
 // Mark this route as dynamic (not prerendered)
 export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import { BillDetailView } from '@/components/bills/detail/BillDetailView';
 
 const { id } = Astro.params;
 

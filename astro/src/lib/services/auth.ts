@@ -1,4 +1,5 @@
-import type { User } from '../../types';
+import type { User, UserProfile, ApiResponse } from '../../types';
+import { apiFetch } from '../api-client';
 
 export interface TokenResponse {
   access_token: string;
@@ -89,5 +90,37 @@ export const authService = {
   isAuthenticated(): boolean {
     if (typeof window === 'undefined') return false;
     return !!localStorage.getItem('access_token');
-  }
+  },
+
+  /**
+   * Pobiera profil użytkownika wraz ze statystykami użycia
+   * @returns Profil użytkownika z informacjami o limicie paragonów
+   */
+  async getUserProfile(): Promise<UserProfile> {
+    try {
+      const response = await apiFetch('/api/users/me');
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Brak autoryzacji');
+        }
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data: ApiResponse<UserProfile> | UserProfile = await response.json();
+
+      // Handle both wrapped ApiResponse and direct response for flexibility
+      if ('data' in data && 'success' in data) {
+        if (!data.success) {
+          throw new Error(data.message || 'Failed to fetch user profile');
+        }
+        return data.data;
+      }
+
+      return data as UserProfile;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+  },
 };

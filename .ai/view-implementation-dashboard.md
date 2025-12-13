@@ -58,22 +58,27 @@ DashboardView (React)
 **Opis komponentu:** Główny komponent widoku Dashboard, który orkiestruje wszystkie sekcje i zarządza stanem ładowania danych z wielu źródeł API. Komponent wykorzystuje custom hook `useDashboard` do pobierania wszystkich potrzebnych danych.
 
 **Główne elementy:**
+
 - Kontener główny z klasami Tailwind (`container mx-auto py-10 px-4 md:px-6 space-y-6`)
 - Sekcja `DashboardStats` z komponentami statystyk
 - Sekcja `RecentBillsSection` z listą ostatnich paragonów
 - Obsługa stanów loading/error dla każdej sekcji niezależnie
 
 **Obsługiwane interakcje:**
+
 - Automatyczne odświeżanie danych przy montowaniu komponentu
 - Obsługa błędów na poziomie poszczególnych sekcji (błąd jednej sekcji nie blokuje innych)
 
 **Obsługiwana walidacja:**
+
 - Brak walidacji na poziomie komponentu (walidacja odbywa się w serwisach API)
 
 **Typy:**
+
 - Brak własnych typów, wykorzystuje typy z `@/types`
 
 **Propsy:**
+
 - Brak propsów (komponent nie przyjmuje żadnych propsów)
 
 ### StatsCard
@@ -81,6 +86,7 @@ DashboardView (React)
 **Opis komponentu:** Reużywalny komponent prezentacyjny wyświetlający pojedynczą statystykę (etykietę, wartość główną i opcjonalny wskaźnik trendu). Komponent jest używany do wyświetlania wydatków dzisiaj oraz wydatków w tym miesiącu.
 
 **Główne elementy:**
+
 - Kontener z klasami Tailwind (card-like appearance z border i padding)
 - Etykieta tekstowa (np. "Wydatki dzisiaj")
 - Wartość główna sformatowana jako kwota (np. "124.50 PLN")
@@ -88,9 +94,11 @@ DashboardView (React)
 - Opcjonalny skeleton loader podczas ładowania
 
 **Obsługiwane interakcje:**
+
 - Brak interakcji (komponent prezentacyjny)
 
 **Obsługiwana walidacja:**
+
 - Walidacja wartości numerycznej (jeśli wartość jest ujemna lub NaN, wyświetl "0.00 PLN")
 - Walidacja trendu (jeśli brak danych do porównania, ukryj wskaźnik trendu)
 
@@ -110,6 +118,7 @@ interface StatsCardProps {
 ```
 
 **Propsy:**
+
 - `label: string` - Etykieta wyświetlana nad wartością
 - `value: number | null` - Wartość do wyświetlenia (null podczas ładowania)
 - `isLoading?: boolean` - Flaga wskazująca stan ładowania
@@ -121,6 +130,7 @@ interface StatsCardProps {
 **Opis komponentu:** Komponent wyświetlający stan limitu paragonów w modelu freemium. Zawiera pasek postępu, aktualną liczbę użytych paragonów, limit oraz informację o pozostałych paragonach. Pasek zmienia kolor na czerwony, gdy limit przekracza 90%.
 
 **Główne elementy:**
+
 - Kontener z klasami Tailwind (card-like appearance)
 - Nagłówek z tytułem "Limit paragonów"
 - Tekst z aktualnym stanem (np. "45 / 100 paragonów")
@@ -129,9 +139,11 @@ interface StatsCardProps {
 - Opcjonalny skeleton loader podczas ładowania
 
 **Obsługiwane interakcje:**
+
 - Brak interakcji (komponent prezentacyjny)
 
 **Obsługiwana walidacja:**
+
 - Walidacja wartości numerycznych (bills_this_month i monthly_limit muszą być >= 0)
 - Obliczenie procentu użycia: `(bills_this_month / monthly_limit) * 100`
 - Walidacja koloru paska: czerwony gdy procent >= 90%, żółty gdy >= 75%, zielony w przeciwnym razie
@@ -148,6 +160,7 @@ interface UsageProgressCardProps {
 ```
 
 **Propsy:**
+
 - `billsThisMonth: number | null` - Liczba przetworzonych paragonów w bieżącym miesiącu
 - `monthlyLimit: number | null` - Miesięczny limit paragonów (domyślnie 100)
 - `isLoading?: boolean` - Flaga wskazująca stan ładowania
@@ -157,6 +170,7 @@ interface UsageProgressCardProps {
 **Opis komponentu:** Komponent wyświetlający uproszczoną listę ostatnich 5 paragonów. Każdy wiersz zawiera podstawowe informacje: data, nazwa sklepu, kwota i status. Kliknięcie w wiersz nawiguje do szczegółów paragonu.
 
 **Główne elementy:**
+
 - Kontener z klasami Tailwind
 - Nagłówek sekcji "Ostatnie paragony"
 - Tabela lub lista z wierszami paragonów
@@ -170,10 +184,12 @@ interface UsageProgressCardProps {
 - Komunikat "Brak paragonów" gdy lista jest pusta
 
 **Obsługiwane interakcje:**
+
 - Kliknięcie w wiersz tabeli → nawigacja do `/bills/{id}`
 - Kliknięcie w link "Zobacz wszystkie" → nawigacja do `/bills`
 
 **Obsługiwana walidacja:**
+
 - Walidacja danych paragonu (jeśli brak shop, wyświetl "Nieznany sklep")
 - Walidacja kwoty (jeśli null lub undefined, wyświetl "0.00 PLN")
 - Walidacja daty (formatowanie z obsługą błędów parsowania)
@@ -190,6 +206,7 @@ interface RecentBillsListProps {
 ```
 
 **Propsy:**
+
 - `bills: BillResponse[]` - Tablica paragonów do wyświetlenia (maksymalnie 5)
 - `isLoading: boolean` - Flaga wskazująca stan ładowania
 - `error: Error | null` - Błąd pobierania danych (jeśli wystąpił)
@@ -200,16 +217,20 @@ interface RecentBillsListProps {
 **Opis komponentu:** Komponent kontenerowy grupujący wszystkie karty statystyk w responsywny układ siatki. Na desktopie wyświetla 3 kolumny, na mobile 1 kolumnę.
 
 **Główne elementy:**
+
 - Kontener z klasami Tailwind Grid (`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4`)
 - Trzy instancje komponentów: `StatsCard` (wydatki dzisiaj), `StatsCard` (wydatki miesięczne), `UsageProgressCard`
 
 **Obsługiwane interakcje:**
+
 - Brak interakcji (komponent kontenerowy)
 
 **Obsługiwana walidacja:**
+
 - Brak walidacji (przekazuje dane do komponentów dzieci)
 
 **Typy:**
+
 - Brak własnych typów
 
 **Propsy:**
@@ -231,17 +252,21 @@ interface DashboardStatsProps {
 **Opis komponentu:** Komponent kontenerowy dla sekcji z ostatnimi paragonami. Zawiera nagłówek sekcji i komponent `RecentBillsList`.
 
 **Główne elementy:**
+
 - Kontener z klasami Tailwind
 - Nagłówek sekcji "Ostatnie paragony"
 - Komponent `RecentBillsList`
 
 **Obsługiwane interakcje:**
+
 - Brak interakcji (komponent kontenerowy)
 
 **Obsługiwana walidacja:**
+
 - Brak walidacji (przekazuje dane do komponentu dziecka)
 
 **Typy:**
+
 - Brak własnych typów
 
 **Propsy:**
@@ -320,37 +345,38 @@ Widok Dashboard wykorzystuje **custom hook `useDashboard`**, który zarządza st
 **Opis:** Hook łączący wszystkie zapytania API potrzebne dla widoku Dashboard. Zarządza stanem ładowania, błędów i danych dla każdego źródła niezależnie.
 
 **Stan zarządzany:**
-- Wydatki dzisiaj (z `getDailyReport`)
-- Wydatki w tym miesiącu (z `getMonthlyReport`)
-- Wydatki z poprzedniego miesiąca (z `getMonthlyReport` dla poprzedniego miesiąca)
-- Statystyki użycia (z `getUserProfile`)
-- Ostatnie paragony (z `getBills` z limit=5)
+
+- Wydatki dzisiaj (z `getDailyReport` → `GET /api/v1/reports/daily`)
+- Wydatki w tym miesiącu (z `getMonthlyReport` → `GET /api/v1/reports/monthly`)
+- Wydatki z poprzedniego miesiąca (z `getMonthlyReport` dla poprzedniego miesiąca → `GET /api/v1/reports/monthly?month=YYYY-MM`)
+- Statystyki użycia (z `getUserProfile` → `GET /api/v1/users/me`)
+- Ostatnie paragony (z `getBills` z limit=5 → `GET /api/v1/bills?limit=5`)
 
 **Zwracany interfejs:**
 
 ```typescript
 interface UseDashboardReturn {
-  // Daily expenses
+  // Daily expenses (z GET /api/v1/reports/daily)
   dailyExpenses: number | null;
   isLoadingDaily: boolean;
   dailyError: Error | null;
-  
-  // Monthly expenses
+
+  // Monthly expenses (z GET /api/v1/reports/monthly)
   monthlyExpenses: number | null;
   previousMonthExpenses: number | null;
   isLoadingMonthly: boolean;
   monthlyError: Error | null;
-  
-  // Usage stats
+
+  // Usage stats (z GET /api/v1/users/me)
   usageStats: UsageStats | null;
   isLoadingUsage: boolean;
   usageError: Error | null;
-  
-  // Recent bills
+
+  // Recent bills (z GET /api/v1/bills)
   recentBills: BillResponse[];
   isLoadingBills: boolean;
   billsError: Error | null;
-  
+
   // Refetch functions
   refetchAll: () => Promise<void>;
   refetchDaily: () => Promise<void>;
@@ -361,6 +387,7 @@ interface UseDashboardReturn {
 ```
 
 **Implementacja:**
+
 - Wykorzystuje `useState` i `useEffect` do zarządzania stanem każdego zapytania
 - Każde zapytanie ma własny stan loading i error
 - Zapytania są wykonywane równolegle przy montowaniu komponentu
@@ -373,7 +400,7 @@ Jeśli projekt wykorzystuje TanStack Query, hook może być zaimplementowany z u
 
 Widok Dashboard wymaga integracji z następującymi endpointami API:
 
-### 7.1. GET /api/users/me
+### 7.1. GET /api/v1/users/me
 
 **Opis:** Pobiera profil użytkownika wraz ze statystykami użycia (limit paragonów).
 
@@ -381,7 +408,8 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 
 **Query Parameters:** Brak
 
-**Headers:** 
+**Headers:**
+
 - `Authorization: Bearer {access_token}` (wymagane)
 
 **Typ odpowiedzi:** `UserProfile`
@@ -398,26 +426,31 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
     bills_this_month: number;
     monthly_limit: number;
     remaining_bills: number;
-  };
+  }
 }
 ```
 
 **Obsługa błędów:**
-- `401 Unauthorized` - Brak autoryzacji, przekierowanie do logowania
+
+- `401 Unauthorized` - Brak autoryzacji lub nieprawidłowy token, przekierowanie do logowania
 - `500 Internal Server Error` - Błąd serwera, wyświetlenie komunikatu błędu
 
 **Serwis:** `getUserProfile()` w `astro/src/lib/services/auth.ts` (do utworzenia jeśli nie istnieje)
 
-### 7.2. GET /api/reports/daily
+**Uwaga:** Endpoint zwraca profil użytkownika wraz ze statystykami użycia (`usage`), które zawierają `bills_this_month`, `monthly_limit` i `remaining_bills`.
+
+### 7.2. GET /api/v1/reports/daily
 
 **Opis:** Pobiera raport wydatków dziennych dla dzisiaj.
 
 **Typ żądania:** `GET`
 
 **Query Parameters:**
-- `date` (opcjonalny, string ISO 8601, domyślnie dzisiaj) - Data raportu
 
-**Headers:** 
+- `date` (opcjonalny, string ISO 8601, format: `YYYY-MM-DD`, domyślnie: dzisiaj) - Data raportu
+
+**Headers:**
+
 - `Authorization: Bearer {access_token}` (wymagane)
 
 **Typ odpowiedzi:** `DailyReportResponse`
@@ -429,28 +462,70 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
   date: string; // "2024-01-15"
   total_amount: number; // 125.50
   bills_count: number; // 3
-  top_categories: CategorySummary[];
-  shops: ShopSummary[];
+  top_categories: CategorySummary[]; // Top 3 kategorie
+  shops: ShopSummary[]; // Wszystkie sklepy z wydatkami w tym dniu
 }
 ```
 
 **Obsługa błędów:**
-- `400 Bad Request` - Nieprawidłowy format daty
-- `401 Unauthorized` - Brak autoryzacji
+
+- `400 Bad Request` - Nieprawidłowy format daty lub data w przyszłości
+- `401 Unauthorized` - Brak autoryzacji lub nieprawidłowy token
 - `500 Internal Server Error` - Błąd serwera
 
 **Serwis:** `getDailyReport(date?: string)` w `astro/src/lib/services/reports.ts` (do utworzenia)
 
-### 7.3. GET /api/reports/monthly
+### 7.3. GET /api/v1/reports/weekly
+
+**Opis:** Pobiera raport wydatków tygodniowych dla aktualnego tygodnia (poniedziałek-niedziela).
+
+**Typ żądania:** `GET`
+
+**Query Parameters:**
+
+- `week_start` (opcjonalny, string ISO 8601, format: `YYYY-MM-DD`, domyślnie: początek aktualnego tygodnia) - Data rozpoczęcia tygodnia (poniedziałek)
+
+**Headers:**
+
+- `Authorization: Bearer {access_token}` (wymagane)
+
+**Typ odpowiedzi:** `WeeklyReportResponse`
+
+**Struktura odpowiedzi:**
+
+```typescript
+{
+  week_start: string; // "2024-01-01"
+  week_end: string; // "2024-01-07"
+  total_amount: number; // 850.25
+  bills_count: number; // 15
+  daily_breakdown: DailyBreakdown[]; // Podział dzienny (7 dni)
+  top_categories: CategorySummary[]; // Top 3 kategorie
+}
+```
+
+**Obsługa błędów:**
+
+- `400 Bad Request` - Nieprawidłowy format daty lub data w przyszłości
+- `401 Unauthorized` - Brak autoryzacji lub nieprawidłowy token
+- `500 Internal Server Error` - Błąd serwera
+
+**Serwis:** `getWeeklyReport(weekStart?: string)` w `astro/src/lib/services/reports.ts` (do utworzenia)
+
+**Uwaga:** Endpoint nie jest używany w widoku Dashboard, ale jest dostępny w API i może być wykorzystany w przyszłości.
+
+### 7.4. GET /api/v1/reports/monthly
 
 **Opis:** Pobiera raport wydatków miesięcznych dla bieżącego i poprzedniego miesiąca.
 
 **Typ żądania:** `GET`
 
 **Query Parameters:**
+
 - `month` (opcjonalny, string YYYY-MM, domyślnie bieżący miesiąc) - Miesiąc raportu
 
-**Headers:** 
+**Headers:**
+
 - `Authorization: Bearer {access_token}` (wymagane)
 
 **Typ odpowiedzi:** `MonthlyReportResponse`
@@ -470,27 +545,31 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 ```
 
 **Obsługa błędów:**
-- `400 Bad Request` - Nieprawidłowy format miesiąca
-- `401 Unauthorized` - Brak autoryzacji
+
+- `400 Bad Request` - Nieprawidłowy format miesiąca (oczekiwany format: `YYYY-MM`) lub miesiąc w przyszłości
+- `401 Unauthorized` - Brak autoryzacji lub nieprawidłowy token
 - `500 Internal Server Error` - Błąd serwera
 
 **Serwis:** `getMonthlyReport(month?: string)` w `astro/src/lib/services/reports.ts` (do utworzenia)
 
 **Uwaga:** Aby uzyskać porównanie z poprzednim miesiącem, należy wykonać dwa zapytania:
+
 1. Dla bieżącego miesiąca: `getMonthlyReport()` (bez parametru)
 2. Dla poprzedniego miesiąca: `getMonthlyReport(previousMonth)` (np. "2023-12")
 
-### 7.4. GET /api/bills
+### 7.5. GET /api/v1/bills
 
 **Opis:** Pobiera listę ostatnich 5 paragonów.
 
 **Typ żądania:** `GET`
 
 **Query Parameters:**
+
 - `limit` (wymagany, number, wartość: 5) - Liczba paragonów do pobrania
 - `skip` (opcjonalny, number, domyślnie 0) - Liczba paragonów do pominięcia
 
-**Headers:** 
+**Headers:**
+
 - `Authorization: Bearer {access_token}` (wymagane)
 
 **Typ odpowiedzi:** `BillListResponse`
@@ -507,6 +586,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 ```
 
 **Obsługa błędów:**
+
 - `401 Unauthorized` - Brak autoryzacji
 - `500 Internal Server Error` - Błąd serwera
 
@@ -521,6 +601,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Akcja:** Użytkownik otwiera stronę `/dashboard`
 
 **Oczekiwany wynik:**
+
 1. Wyświetlenie skeleton loaders dla wszystkich sekcji
 2. Równoległe wykonanie wszystkich zapytań API
 3. Stopniowe zastępowanie skeleton loaders rzeczywistymi danymi w miarę otrzymywania odpowiedzi
@@ -531,6 +612,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Akcja:** Użytkownik klika w wiersz w liście ostatnich paragonów
 
 **Oczekiwany wynik:**
+
 1. Nawigacja do `/bills/{id}` (szczegóły paragonu)
 2. Przejście płynne (jeśli użyty ClientRouter z Astro)
 
@@ -539,6 +621,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Akcja:** Użytkownik klika w link "Zobacz wszystkie" w sekcji ostatnich paragonów
 
 **Oczekiwany wynik:**
+
 1. Nawigacja do `/bills` (lista wszystkich paragonów)
 
 ### 8.4. Obsługa błędów ładowania
@@ -546,6 +629,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Akcja:** Jedno z zapytań API zwraca błąd
 
 **Oczekiwany wynik:**
+
 1. Wyświetlenie komunikatu błędu w odpowiedniej sekcji (np. "Nie udało się pobrać wydatków dzisiaj")
 2. Pozostałe sekcje działają normalnie (błąd jednej sekcji nie blokuje innych)
 3. Opcjonalnie przycisk "Spróbuj ponownie" do ręcznego odświeżenia
@@ -555,6 +639,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Akcja:** Użytkownik odświeża stronę (F5) lub wraca do widoku
 
 **Oczekiwany wynik:**
+
 1. Wykonanie wszystkich zapytań API ponownie
 2. Wyświetlenie skeleton loaders podczas ładowania
 3. Aktualizacja danych po otrzymaniu odpowiedzi
@@ -564,22 +649,26 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 ### 9.1. Walidacja danych z API
 
 **Wydatki dzienne:**
+
 - Jeśli `total_amount` jest null lub undefined, wyświetl "0.00 PLN"
 - Jeśli `date` jest nieprawidłowa, użyj dzisiejszej daty jako fallback
 
 **Wydatki miesięczne:**
+
 - Jeśli `total_amount` jest null lub undefined, wyświetl "0.00 PLN"
 - Jeśli brak danych z poprzedniego miesiąca, ukryj wskaźnik trendu
 - Obliczenie trendu: `((current - previous) / previous) * 100`
 - Jeśli poprzedni miesiąc miał 0 wydatków, nie wyświetlaj trendu (dzielenie przez zero)
 
 **Statystyki użycia:**
+
 - Jeśli `bills_this_month` jest null, wyświetl "0"
 - Jeśli `monthly_limit` jest null, użyj wartości domyślnej 100
 - Obliczenie procentu: `(bills_this_month / monthly_limit) * 100` (maksymalnie 100%)
 - Obliczenie pozostałych: `Math.max(0, monthly_limit - bills_this_month)`
 
 **Ostatnie paragony:**
+
 - Jeśli lista jest pusta, wyświetl komunikat "Brak paragonów"
 - Jeśli `shop` jest null, wyświetl "Nieznany sklep"
 - Jeśli `total_amount` jest null, wyświetl "0.00 PLN"
@@ -588,24 +677,29 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 ### 9.2. Walidacja stanów ładowania
 
 **Skeleton loaders:**
+
 - Wyświetlaj skeleton loader tylko gdy `isLoading === true`
 - Ukryj skeleton loader gdy dane są załadowane (nawet jeśli są puste)
 
 **Obsługa błędów:**
+
 - Jeśli `error !== null`, wyświetl komunikat błędu zamiast danych
 - Komunikat błędu powinien być czytelny dla użytkownika (np. "Nie udało się pobrać danych")
 
 ### 9.3. Walidacja responsywności
 
 **Desktop (lg+):**
+
 - Statystyki w układzie 3 kolumn
 - Pełna szerokość tabeli z ostatnimi paragonami
 
 **Tablet (md):**
+
 - Statystyki w układzie 2 kolumn
 - Pełna szerokość tabeli
 
 **Mobile (<md):**
+
 - Statystyki w układzie 1 kolumny
 - Tabela z przewijaniem poziomym (jeśli potrzebne)
 
@@ -616,6 +710,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** Token wygasł lub jest nieprawidłowy
 
 **Obsługa:**
+
 1. `apiFetch` automatycznie próbuje odświeżyć token
 2. Jeśli odświeżenie się nie powiedzie, przekierowanie do `/` (strona główna)
 3. Wyświetlenie komunikatu: "Sesja wygasła. Zaloguj się ponownie."
@@ -627,6 +722,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** Błąd po stronie serwera API
 
 **Obsługa:**
+
 1. Wyświetlenie komunikatu błędu w odpowiedniej sekcji
 2. Przycisk "Spróbuj ponownie" do ręcznego odświeżenia
 3. Logowanie błędu do konsoli dla debugowania
@@ -638,6 +734,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** Brak połączenia z internetem lub timeout
 
 **Obsługa:**
+
 1. Wyświetlenie komunikatu: "Brak połączenia z internetem. Sprawdź swoje połączenie."
 2. Przycisk "Spróbuj ponownie" do ponownej próby
 3. Automatyczna retry po 5 sekundach (opcjonalnie)
@@ -647,6 +744,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** API zwróciło nieprawidłowy format danych
 
 **Obsługa:**
+
 1. Walidacja struktury odpowiedzi przed użyciem
 2. Jeśli struktura jest nieprawidłowa, wyświetl komunikat błędu
 3. Logowanie szczegółów błędu do konsoli
@@ -656,6 +754,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** Jedno z zapytań API zwraca błąd, ale pozostałe działają
 
 **Obsługa:**
+
 1. Wyświetlenie błędu tylko w odpowiedniej sekcji
 2. Pozostałe sekcje działają normalnie
 3. Użytkownik może nadal korzystać z funkcjonalności, które działają
@@ -667,6 +766,7 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 **Scenariusz:** Użytkownik nie ma jeszcze żadnych paragonów
 
 **Obsługa:**
+
 1. Wyświetl "0.00 PLN" dla wydatków
 2. Wyświetl "0 / 100 paragonów" dla limitu
 3. Wyświetl komunikat "Brak paragonów" w sekcji ostatnich paragonów
@@ -677,10 +777,12 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 ### Krok 1: Utworzenie serwisów API
 
 1. Utworzyć plik `astro/src/lib/services/reports.ts` z funkcjami:
-   - `getDailyReport(date?: string): Promise<DailyReportResponse>`
-   - `getMonthlyReport(month?: string): Promise<MonthlyReportResponse>`
-2. Sprawdzić czy istnieje `getUserProfile()` w `astro/src/lib/services/auth.ts`, jeśli nie, utworzyć
+   - `getDailyReport(date?: string): Promise<DailyReportResponse>` → `GET /api/v1/reports/daily?date=YYYY-MM-DD`
+   - `getWeeklyReport(weekStart?: string): Promise<WeeklyReportResponse>` → `GET /api/v1/reports/weekly?week_start=YYYY-MM-DD` (opcjonalnie, nie używane w Dashboard)
+   - `getMonthlyReport(month?: string): Promise<MonthlyReportResponse>` → `GET /api/v1/reports/monthly?month=YYYY-MM`
+2. Sprawdzić czy istnieje `getUserProfile()` w `astro/src/lib/services/auth.ts`, jeśli nie, utworzyć → `GET /api/v1/users/me`
 3. Przetestować serwisy w izolacji (sprawdzenie typów i obsługi błędów)
+4. Upewnić się, że wszystkie ścieżki API używają prefixu `/api/v1/`
 
 ### Krok 2: Utworzenie custom hooka useDashboard
 
@@ -778,4 +880,3 @@ Widok Dashboard wymaga integracji z następującymi endpointami API:
 1. Zaktualizować dokumentację komponentów (jeśli istnieje)
 2. Dodać przykłady użycia w Storybook (jeśli używany)
 3. Zaktualizować README z informacją o nowym widoku (opcjonalnie)
-

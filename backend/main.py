@@ -16,6 +16,7 @@ from src.users.routes import router as users_router
 from src.telegram.routes import router as telegram_router
 from src.telegram.services import TelegramBotService
 from src.ocr.routes import router as ocr_router
+from src.reports.routes import router as reports_router
 from src.error_handler import exception_handler
 
 # Configure logging
@@ -76,3 +77,4 @@ app.include_router(shops_router, prefix="/api/v1/shops", tags=["shops"])
 app.include_router(telegram_messages_router, prefix="/api/v1/telegram-messages", tags=["telegram-messages"])
 app.include_router(telegram_router, prefix="/api/v1", tags=["telegram"])
 app.include_router(ocr_router, prefix="/api/v1", tags=["ocr"])
+app.include_router(reports_router, prefix="/api/v1/reports", tags=["reports"])
