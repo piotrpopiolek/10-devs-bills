@@ -25,6 +25,7 @@ from src.telegram.utils import (
 )
 from src.reports.services import ReportService
 from src.reports.exceptions import InvalidDateRangeError, InvalidMonthFormatError
+from src.users.services import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -450,8 +451,33 @@ async def handle_receipt_image(update: Update, context: ContextTypes.DEFAULT_TYP
         # User is already retrieved from context (middleware)
         logger.info(f"User for Telegram ID {update.effective_user.id}: {user_id}")
 
-        # TODO: Check user receipt limit (Freemium Model F-09)
-        # if user.receipts_count >= 100: ...
+        # Check user receipt limit (Freemium Model F-09)
+        # Most Koncepcyjny (PHP → Python):
+        # W Symfony/Laravel używałbyś Rate Limiter jako service dependency.
+        # W FastAPI/Telegram używamy tej samej logiki co w middleware, ale dostosowanej do kontekstu botów.
+        user_service = UserService(session)
+        usage_stats = await user_service.get_user_usage_stats(user_id)
+        bills_this_month = usage_stats["bills_this_month"]
+        remaining_bills = usage_stats["remaining_bills"]
+        monthly_limit = usage_stats["monthly_limit"]
+        
+        # Check if limit is exceeded (US-009: Block at 101st receipt)
+        if remaining_bills <= 0:
+            await status_message.edit_text(
+                f"⚠️ Osiągnięto miesięczny limit {monthly_limit} paragonów.\n\n"
+                f"Limit zresetuje się w przyszłym miesiącu.\n"
+                f"Obecnie przetworzono: {bills_this_month} paragonów w tym miesiącu."
+            )
+            logger.info(f"User {user_id} exceeded monthly limit: {bills_this_month}/{monthly_limit}")
+            return
+        
+        # Check if approaching limit (US-009: Notify at 90th receipt)
+        if bills_this_month == 90:
+            await update.message.reply_text(
+                f"📊 Zbliżasz się do limitu!\n\n"
+                f"Przetworzyłeś już {bills_this_month} paragonów w tym miesiącu.\n"
+                f"Pozostało Ci jeszcze {remaining_bills} paragonów do limitu {monthly_limit}."
+            )
 
         # 2. Get file from Telegram
         try:
