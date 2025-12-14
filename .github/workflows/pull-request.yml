@@ -180,36 +180,33 @@ jobs:
         with:
           script: |
             const prNumber = context.payload.pull_request?.number || context.issue.number;
-            
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
-            
+
             const botComment = comments.find(comment => 
               comment.user.type === 'Bot' && 
               comment.body.includes('## ✅ Pull Request Checks Status')
             );
-            
+
             const frontendCoverage = '${{ steps.frontend-coverage.outputs.coverage }}';
             const backendCoverage = '${{ steps.backend-coverage.outputs.coverage }}';
-            
-            const frontendCoverageText = frontendCoverage !== 'N/A' ? `\n- **Frontend Coverage:** ${frontendCoverage}%` : '';
-            const backendCoverageText = backendCoverage !== 'N/A' ? `\n- **Backend Coverage:** ${backendCoverage}%` : '';
-            
-            const body = `## ✅ Pull Request Checks Status
-            
-All checks passed successfully! 🎉
 
-### Results:
-- ✅ **Frontend Lint:** Passed
-- ✅ **Frontend Unit Tests:** Passed${frontendCoverageText}
-- ✅ **Backend Lint:** Passed
-- ✅ **Backend Unit Tests:** Passed${backendCoverageText}
+            const frontendCoverageText = frontendCoverage !== 'N/A' ? '\n- **Frontend Coverage:** ' + frontendCoverage + '%' : '';
+            const backendCoverageText = backendCoverage !== 'N/A' ? '\n- **Backend Coverage:** ' + backendCoverage + '%' : '';
 
----
-*This comment will be updated automatically on each push.*`;
+            const body = '## ✅ Pull Request Checks Status\n\n' +
+              'All checks passed successfully! 🎉\n\n' +
+              '### Results:\n' +
+              '- ✅ **Frontend Lint:** Passed\n' +
+              '- ✅ **Frontend Unit Tests:** Passed' + frontendCoverageText + '\n' +
+              '- ✅ **Backend Lint:** Passed\n' +
+              '- ✅ **Backend Unit Tests:** Passed' + backendCoverageText + '\n\n' +
+              '---\n' +
+              '*This comment will be updated automatically on each push.*';
 
             if (botComment) {
               await github.rest.issues.updateComment({
