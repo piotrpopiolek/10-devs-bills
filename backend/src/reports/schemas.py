@@ -63,8 +63,8 @@ class DailyReportResponse(AppBaseModel):
     bills_count: int = Field(..., ge=0, description="Number of bills on this day")
     top_categories: List[CategorySummary] = Field(
         ...,
-        max_length=3,
-        description="Top 3 categories by amount spent"
+        max_length=10,
+        description="Top 10 categories by amount spent"
     )
     shops: List[ShopSummary] = Field(..., description="All shops with expenses on this day")
 
@@ -82,8 +82,8 @@ class WeeklyReportResponse(AppBaseModel):
     )
     top_categories: List[CategorySummary] = Field(
         ...,
-        max_length=3,
-        description="Top 3 categories by amount spent in this week"
+        max_length=10,
+        description="Top 10 categories by amount spent in this week"
     )
 
 
@@ -95,13 +95,13 @@ class MonthlyReportResponse(AppBaseModel):
     daily_average: Decimal = Field(..., ge=0, description="Average daily amount spent")
     top_categories: List[CategorySummary] = Field(
         ...,
-        max_length=3,
-        description="Top 3 categories by amount spent in this month"
+        max_length=10,
+        description="Top 10 categories by amount spent in this month"
     )
     top_shops: List[ShopSummary] = Field(
         ...,
-        max_length=3,
-        description="Top 3 shops by amount spent in this month"
+        max_length=10,
+        description="Top 10 shops by amount spent in this month"
     )
     weekly_breakdown: List[WeeklyBreakdown] = Field(
         ...,

@@ -74,7 +74,14 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     );
   }
 
-  const API_URL = `${BACKEND_URL}/reports/daily`;
+  // Ensure BACKEND_URL includes /api/v1 prefix
+  const baseUrl = BACKEND_URL.endsWith('/api/v1') 
+    ? BACKEND_URL 
+    : BACKEND_URL.endsWith('/api/v1/')
+    ? BACKEND_URL.slice(0, -1)
+    : `${BACKEND_URL}/api/v1`;
+  
+  const API_URL = `${baseUrl}/reports/daily`;
   const fullUrl = queryParams.toString() ? `${API_URL}?${queryParams.toString()}` : API_URL;
 
   console.log(`Proxying request to: ${fullUrl}`);

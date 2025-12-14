@@ -14,6 +14,7 @@ export const DashboardView: React.FC = () => {
     // Monthly expenses
     monthlyExpenses,
     previousMonthExpenses,
+    monthlyReport,
     isLoadingMonthly,
     monthlyError,
 

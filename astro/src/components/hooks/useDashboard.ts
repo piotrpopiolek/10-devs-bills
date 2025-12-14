@@ -18,6 +18,7 @@ interface UseDashboardReturn {
   // Monthly expenses (z GET /api/v1/reports/monthly)
   monthlyExpenses: number | null;
   previousMonthExpenses: number | null;
+  monthlyReport: MonthlyReportResponse | null;
   isLoadingMonthly: boolean;
   monthlyError: Error | null;
 
@@ -107,8 +108,17 @@ export const useDashboard = (): UseDashboardReturn => {
 
       // Handle current month result
       if (currentReport.status === 'fulfilled') {
-        setMonthlyExpenses(parseAmount(currentReport.value.total_amount));
+        const report = currentReport.value;
+        console.log('Monthly report received:', {
+          total_amount: report.total_amount,
+          top_categories: report.top_categories?.length || 0,
+          top_shops: report.top_shops?.length || 0,
+          weekly_breakdown: report.weekly_breakdown?.length || 0,
+        });
+        setMonthlyExpenses(parseAmount(report.total_amount));
+        setMonthlyReport(report); // Zapisz pełny raport dla komponentów wykresów
       } else {
+        console.error('Error fetching current month report:', currentReport.reason);
         throw currentReport.reason;
       }
 
@@ -125,6 +135,7 @@ export const useDashboard = (): UseDashboardReturn => {
       );
       setMonthlyExpenses(null);
       setPreviousMonthExpenses(null);
+      setMonthlyReport(null); // Wyczyść raport w przypadku błędu
     } finally {
       setIsLoadingMonthly(false);
     }
@@ -184,6 +195,19 @@ export const useDashboard = (): UseDashboardReturn => {
       fetchBills(),
     ]);
   }, [fetchDaily, fetchMonthly, fetchUsage, fetchBills]);
+
+  // Auto-refresh dashboard data every 2 minutes (120 seconds)
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      console.log('Auto-refreshing dashboard data...');
+      refetchAll();
+    }, 2 * 60 * 1000); // 2 minutes in milliseconds
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [refetchAll]);
 
   return {
     // Daily expenses

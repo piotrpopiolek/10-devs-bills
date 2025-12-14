@@ -74,7 +74,14 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     );
   }
 
-  const API_URL = `${BACKEND_URL}/reports/monthly`;
+  // Ensure BACKEND_URL includes /api/v1 prefix
+  const baseUrl = BACKEND_URL.endsWith('/api/v1') 
+    ? BACKEND_URL 
+    : BACKEND_URL.endsWith('/api/v1/')
+    ? BACKEND_URL.slice(0, -1)
+    : `${BACKEND_URL}/api/v1`;
+  
+  const API_URL = `${baseUrl}/reports/monthly`;
   const fullUrl = queryParams.toString() ? `${API_URL}?${queryParams.toString()}` : API_URL;
 
   console.log(`Proxying request to: ${fullUrl}`);
@@ -101,6 +108,16 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     }
 
     const data = (await response.json()) as MonthlyReportResponse;
+    
+    // Log the response structure for debugging
+    console.log('Monthly report response:', {
+      hasTopCategories: !!data.top_categories,
+      topCategoriesCount: data.top_categories?.length || 0,
+      hasTopShops: !!data.top_shops,
+      topShopsCount: data.top_shops?.length || 0,
+      hasWeeklyBreakdown: !!data.weekly_breakdown,
+      weeklyBreakdownCount: data.weekly_breakdown?.length || 0,
+    });
 
     // Return wrapped response
     const apiResponse: ApiResponse<MonthlyReportResponse> = {

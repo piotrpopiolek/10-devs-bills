@@ -137,9 +137,21 @@ export const getMonthlyReport = async (
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch monthly report');
       }
-      return data.data;
+      const report = data.data;
+      console.log('Unwrapped monthly report:', {
+        month: report.month,
+        total_amount: report.total_amount,
+        top_categories_count: report.top_categories?.length || 0,
+        top_shops_count: report.top_shops?.length || 0,
+        weekly_breakdown_count: report.weekly_breakdown?.length || 0,
+      });
+      return report;
     }
 
+    console.log('Direct monthly report response (not wrapped):', {
+      month: (data as MonthlyReportResponse).month,
+      total_amount: (data as MonthlyReportResponse).total_amount,
+    });
     return data as MonthlyReportResponse;
   } catch (error) {
     console.error('Error fetching monthly report:', error);

@@ -34,65 +34,77 @@ export async function apiFetch(
     headers,
   });
 
-  // If we got 401 and have a refresh token, try to refresh
-  if (response.status === 401 && authService.getRefreshToken()) {
-    // If already refreshing, wait for that to complete
-    if (isRefreshing && refreshPromise) {
-      await refreshPromise;
-      // Retry with new token
-      const newAccessToken = authService.getAccessToken();
-      if (newAccessToken) {
-        headers.set('Authorization', `Bearer ${newAccessToken}`);
-        response = await fetch(url, {
-          ...options,
-          headers,
-        });
-      }
-      return response;
-    }
-
-    // Start refresh process
-    isRefreshing = true;
-    refreshPromise = (async () => {
-      try {
-        // Refresh token
-        await authService.refreshToken();
-      } catch (refreshError) {
-        // If refresh fails, clear session
-        authService.clearSession();
-        
-        // If we're on client side, redirect to home/login
-        if (typeof window !== 'undefined') {
-          // Optionally redirect to login page
-          // window.location.href = '/';
+  // If we got 401, handle authentication error
+  if (response.status === 401) {
+    const refreshToken = authService.getRefreshToken();
+    
+    // If we have a refresh token, try to refresh
+    if (refreshToken) {
+      // If already refreshing, wait for that to complete
+      if (isRefreshing && refreshPromise) {
+        await refreshPromise;
+        // Retry with new token
+        const newAccessToken = authService.getAccessToken();
+        if (newAccessToken) {
+          headers.set('Authorization', `Bearer ${newAccessToken}`);
+          response = await fetch(url, {
+            ...options,
+            headers,
+          });
         }
-        
-        throw new Error('Session expired. Please log in again.');
-      } finally {
-        isRefreshing = false;
-        refreshPromise = null;
+        return response;
       }
-    })();
 
-    try {
-      await refreshPromise;
-      
-      // Get new access token
-      const newAccessToken = authService.getAccessToken();
-      
-      if (newAccessToken) {
-        // Update Authorization header with new token
-        headers.set('Authorization', `Bearer ${newAccessToken}`);
+      // Start refresh process
+      isRefreshing = true;
+      refreshPromise = (async () => {
+        try {
+          // Refresh token
+          await authService.refreshToken();
+        } catch (refreshError) {
+          // If refresh fails, clear session and redirect
+          authService.clearSession();
+          
+          // If we're on client side, redirect to home page
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          }
+          
+          throw new Error('Session expired. Please log in again.');
+        } finally {
+          isRefreshing = false;
+          refreshPromise = null;
+        }
+      })();
+
+      try {
+        await refreshPromise;
         
-        // Retry original request with new token
-        response = await fetch(url, {
-          ...options,
-          headers,
-        });
+        // Get new access token
+        const newAccessToken = authService.getAccessToken();
+        
+        if (newAccessToken) {
+          // Update Authorization header with new token
+          headers.set('Authorization', `Bearer ${newAccessToken}`);
+          
+          // Retry original request with new token
+          response = await fetch(url, {
+            ...options,
+            headers,
+          });
+        }
+      } catch (refreshError) {
+        // Error already handled in refreshPromise
+        throw refreshError;
       }
-    } catch (refreshError) {
-      // Error already handled in refreshPromise
-      throw refreshError;
+    } else {
+      // No refresh token available - session expired, clear and redirect
+      authService.clearSession();
+      
+      // If we're on client side, redirect to home page
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
     }
   }
 

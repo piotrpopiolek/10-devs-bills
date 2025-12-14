@@ -92,7 +92,7 @@ class ReportService:
         total_amount = total_row.total_amount or Decimal("0.00")
         bills_count = total_row.bills_count or 0
 
-        # Query 2: Get top 3 categories
+        # Query 2: Get top 10 categories
         categories_stmt = (
             select(
                 Category.id,
@@ -112,7 +112,7 @@ class ReportService:
             )
             .group_by(Category.id, Category.name)
             .order_by(func.sum(BillItem.total_price).desc())
-            .limit(3)
+            .limit(10)
         )
         categories_result = await self.session.execute(categories_stmt)
         categories_rows = categories_result.all()
@@ -263,7 +263,7 @@ class ReportService:
         total_amount = total_row.total_amount or Decimal("0.00")
         bills_count = total_row.bills_count or 0
 
-        # Query 3: Get top 3 categories for the week
+        # Query 3: Get top 10 categories for the week
         categories_stmt = (
             select(
                 Category.id,
@@ -284,7 +284,7 @@ class ReportService:
             )
             .group_by(Category.id, Category.name)
             .order_by(func.sum(BillItem.total_price).desc())
-            .limit(3)
+            .limit(10)
         )
         categories_result = await self.session.execute(categories_stmt)
         categories_rows = categories_result.all()
@@ -375,7 +375,7 @@ class ReportService:
         days_in_month = (month_end - month_start).days + 1
         daily_average = total_amount / Decimal(str(days_in_month)) if days_in_month > 0 else Decimal("0.00")
 
-        # Query 2: Get top 3 categories for the month
+        # Query 2: Get top 10 categories for the month
         categories_stmt = (
             select(
                 Category.id,
@@ -395,7 +395,7 @@ class ReportService:
             )
             .group_by(Category.id, Category.name)
             .order_by(func.sum(BillItem.total_price).desc())
-            .limit(3)
+            .limit(10)
         )
         categories_result = await self.session.execute(categories_stmt)
         categories_rows = categories_result.all()
@@ -412,7 +412,7 @@ class ReportService:
                 percentage=percentage
             ))
 
-        # Query 3: Get top 3 shops for the month
+        # Query 3: Get top 10 shops for the month
         shops_stmt = (
             select(
                 Shop.id,
@@ -433,7 +433,7 @@ class ReportService:
             )
             .group_by(Shop.id, Shop.name)
             .order_by(func.sum(BillItem.total_price).desc())
-            .limit(3)
+            .limit(10)
         )
         shops_result = await self.session.execute(shops_stmt)
         shops_rows = shops_result.all()

@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { authService } from '@/lib/services/auth';
+import type { UserProfile } from '@/types';
 
 interface NavItem {
   title: string;
@@ -35,6 +37,9 @@ interface AppSidebarProps {
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
   const [currentPath, setCurrentPath] = useState<string>('');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentPath(window.location.pathname);
@@ -63,16 +68,48 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
     };
   }, []);
 
-  // Mock data - w przyszłości z API
-  const usageLimit = 45; // 45/100
-  const usagePercentage = 45;
-  const userName = 'Użytkownik';
+  // Fetch user profile data
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!authService.isAuthenticated()) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        const profile = await authService.getUserProfile();
+        setUserProfile(profile);
+      } catch (err) {
+        console.error('Error fetching user profile:', err);
+        setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
+
+  // Calculate usage stats from user profile
+  const usageLimit = userProfile?.usage.bills_this_month ?? 0;
+  const monthlyLimit = userProfile?.usage.monthly_limit ?? 100;
+  const usagePercentage = monthlyLimit > 0 ? Math.round((usageLimit / monthlyLimit) * 100) : 0;
+  const userName = userProfile?.external_id 
+    ? `Użytkownik ${userProfile.external_id}` 
+    : 'Użytkownik';
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return currentPath === '/' || currentPath === '/dashboard';
     }
     return currentPath.startsWith(href);
+  };
+
+  const handleLogout = () => {
+    authService.clearSession();
+    window.location.href = '/';
   };
 
   return (
@@ -112,7 +149,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Limit paragonów</span>
-            <span className="font-medium">{usageLimit}/100</span>
+            <span className="font-medium">
+              {isLoading ? '...' : `${usageLimit}/${monthlyLimit}`}
+            </span>
           </div>
           <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
             <div
@@ -133,10 +172,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{userName}</p>
+            <p className="text-sm font-medium truncate">
+              {isLoading ? 'Ładowanie...' : userName}
+            </p>
             <p className="text-xs text-muted-foreground truncate">Freemium</p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8"
+            onClick={handleLogout}
+            title="Wyloguj"
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
@@ -149,6 +196,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
 export const MobileSidebar: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [currentPath, setCurrentPath] = useState<string>('');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentPath(window.location.pathname);
@@ -161,6 +211,30 @@ export const MobileSidebar: React.FC = () => {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  // Fetch user profile data
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!authService.isAuthenticated()) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        const profile = await authService.getUserProfile();
+        setUserProfile(profile);
+      } catch (err) {
+        console.error('Error fetching user profile:', err);
+        setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
+
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return currentPath === '/' || currentPath === '/dashboard';
@@ -168,10 +242,19 @@ export const MobileSidebar: React.FC = () => {
     return currentPath.startsWith(href);
   };
 
-  // Mock data
-  const usageLimit = 45;
-  const usagePercentage = 45;
-  const userName = 'Użytkownik';
+  const handleLogout = () => {
+    authService.clearSession();
+    setOpen(false); // Close mobile sidebar
+    window.location.href = '/';
+  };
+
+  // Calculate usage stats from user profile
+  const usageLimit = userProfile?.usage.bills_this_month ?? 0;
+  const monthlyLimit = userProfile?.usage.monthly_limit ?? 100;
+  const usagePercentage = monthlyLimit > 0 ? Math.round((usageLimit / monthlyLimit) * 100) : 0;
+  const userName = userProfile?.external_id 
+    ? `Użytkownik ${userProfile.external_id}` 
+    : 'Użytkownik';
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -225,7 +308,9 @@ export const MobileSidebar: React.FC = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Limit paragonów</span>
-                <span className="font-medium">{usageLimit}/100</span>
+                <span className="font-medium">
+                  {isLoading ? '...' : `${usageLimit}/${monthlyLimit}`}
+                </span>
               </div>
               <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
                 <div
@@ -245,10 +330,18 @@ export const MobileSidebar: React.FC = () => {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{userName}</p>
+                <p className="text-sm font-medium truncate">
+                  {isLoading ? 'Ładowanie...' : userName}
+                </p>
                 <p className="text-xs text-muted-foreground truncate">Freemium</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={handleLogout}
+                title="Wyloguj"
+              >
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>

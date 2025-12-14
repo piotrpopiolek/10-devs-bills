@@ -15,13 +15,19 @@ interface PieChartProps {
   className?: string;
 }
 
-// Kolory dla wykresu (używamy zmiennych CSS chart-1 do chart-5)
+// Paleta 10 kolorów dla wykresów kołowych
+// Używamy zmiennych CSS dla pierwszych 5, a następnie konkretne kolory dla pozostałych 5
 const CHART_COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
+  'var(--chart-1)', // kolor 1 z motywu
+  'var(--chart-2)', // kolor 2 z motywu
+  'var(--chart-3)', // kolor 3 z motywu
+  'var(--chart-4)', // kolor 4 z motywu
+  'var(--chart-5)', // kolor 5 z motywu
+  '#8b5cf6', // fioletowy
+  '#ec4899', // różowy
+  '#10b981', // zielony
+  '#06b6d4', // cyjan
+  '#f59e0b', // pomarańczowy
 ];
 
 export const PieChart: React.FC<PieChartProps> = ({
@@ -40,7 +46,9 @@ export const PieChart: React.FC<PieChartProps> = ({
     let currentAngle = -90; // Zaczynamy od góry (-90 stopni)
 
     return data.map((item, index) => {
+      // Oblicz percentage na podstawie wartości - zawsze przeliczamy z wartości dla spójności
       const percentage = (item.value / total) * 100;
+      
       const angle = (percentage / 100) * 360;
       const startAngle = currentAngle;
       const endAngle = currentAngle + angle;
@@ -70,6 +78,7 @@ export const PieChart: React.FC<PieChartProps> = ({
 
       return {
         ...item,
+        percentage, // Użyj przeliczanego/zweryfikowanego percentage
         pathData,
         color: CHART_COLORS[index % CHART_COLORS.length],
         startAngle,
@@ -137,7 +146,9 @@ export const PieChart: React.FC<PieChartProps> = ({
                   {formatCurrency(segment.value)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {segment.percentage.toFixed(1)}%
+                  {typeof segment.percentage === 'number' && !isNaN(segment.percentage)
+                    ? segment.percentage.toFixed(1)
+                    : '0.0'}%
                 </div>
               </div>
             </div>
