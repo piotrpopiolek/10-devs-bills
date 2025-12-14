@@ -109,3 +109,42 @@ export function parseAmount(amount: number | string | null | undefined): number 
   }
   return amount;
 }
+
+/**
+ * Formatuje nazwę sklepu, aby każdy wyraz rozpoczynał się od wielkiej litery
+ * @param shopName - Nazwa sklepu do sformatowania
+ * @returns Sformatowana nazwa sklepu (np. "Biedronka", "Dino Polska S.A.")
+ */
+export function formatShopName(shopName: string | null | undefined): string {
+  if (!shopName) {
+    return 'Nieznany sklep';
+  }
+
+  // Podziel na słowa i sformatuj każde słowo
+  return shopName
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) return '';
+      
+      const trimmedWord = word.trim();
+      const lowerWord = trimmedWord.toLowerCase();
+      
+      // Obsługa skrótów firmowych - pisane wielkimi literami
+      if (lowerWord === 's.a.' || lowerWord === 'sa') {
+        return 'S.A.';
+      }
+      if (lowerWord === 'sp.' || lowerWord === 'sp') {
+        return 'Sp.';
+      }
+      if (lowerWord === 'z') {
+        return 'Z';
+      }
+      if (lowerWord === 'o.' || lowerWord === 'o.o.' || lowerWord === 'oo') {
+        return 'O.O.';
+      }
+      
+      // Dla innych słów - pierwsza litera wielka, reszta mała
+      return trimmedWord.charAt(0).toUpperCase() + trimmedWord.slice(1).toLowerCase();
+    })
+    .join(' ');
+}

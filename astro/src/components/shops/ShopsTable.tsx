@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatShopName } from '@/lib/utils/formatting';
 
 interface ShopsTableProps {
   data: ShopResponse[];
@@ -62,7 +63,7 @@ export const ShopsTable: React.FC<ShopsTableProps> = ({ data, isLoading }) => {
         <TableBody>
           {data.map((shop) => (
             <TableRow key={shop.id}>
-              <TableCell className="font-medium">{shop.name}</TableCell>
+              <TableCell className="font-medium">{formatShopName(shop.name)}</TableCell>
               <TableCell className="hidden md:table-cell">
                 {shop.address || "-"}
               </TableCell>

@@ -2,7 +2,7 @@ import React from 'react';
 import { PieChart } from './PieChart';
 import { LineChart } from './LineChart';
 import type { MonthlyReportResponse } from '@/types';
-import { parseAmount } from '@/lib/utils/formatting';
+import { parseAmount, formatShopName } from '@/lib/utils/formatting';
 
 interface DashboardChartsProps {
   monthlyReport: MonthlyReportResponse | null;
@@ -49,7 +49,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
     return monthlyReport.top_shops
       .filter((shop) => shop && shop.shop && shop.shop.name)
       .map((shop) => ({
-        label: shop.shop.name,
+        label: formatShopName(shop.shop.name),
         value: parseAmount(shop.amount),
         percentage: totalAmount > 0 
           ? (parseAmount(shop.amount) / totalAmount) * 100 

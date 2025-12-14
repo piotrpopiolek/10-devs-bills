@@ -4,6 +4,7 @@ import { BillStatusBadge } from '../BillStatusBadge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatShopName } from '@/lib/utils/formatting';
 
 interface BillMetadataProps {
   bill: BillResponse;
@@ -72,12 +73,12 @@ export const BillMetadata: React.FC<BillMetadataProps> = ({
                   className="h-auto p-0 text-sm font-medium"
                   onClick={() => handleShopClick(bill.shop!.id)}
                 >
-                  {bill.shop_name || bill.shop!.name}
+                  {formatShopName(bill.shop_name || bill.shop!.name)}
                   <ExternalLink className="ml-1 h-3 w-3" />
                 </Button>
               ) : (
                 <span className="text-sm font-medium">
-                  {bill.shop_name || bill.shop!.name}
+                  {formatShopName(bill.shop_name || bill.shop!.name)}
                 </span>
               )
             ) : (

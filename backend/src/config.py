@@ -54,10 +54,6 @@ class Settings(BaseSettings):
     PRODUCT_INDEX_ACCEPTANCE_THRESHOLD: int = 3  # Liczba wymaganych potwierdzeń użytkowników dla utworzenia ProductIndex
     FUZZY_MATCH_GROUPING_THRESHOLD: float = 0.85  # Próg podobieństwa dla grupowania nazw w product_candidates
     
-    # Celery
-    CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
-    CELERY_RESULT_BACKEND: str = "rpc://"
-    
     model_config = {
         "env_file": ".env",
         "extra": "ignore" 

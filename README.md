@@ -44,7 +44,6 @@ For full product details, see the PRD:
   - **OCR (MVP):** Google Gemini API (Gemini 1.5 Flash) - LLM-based extraction
   - **OCR (Post-MVP):** PaddlePaddle-OCR (planned for future improvements)
   - OpenAI API (categorization & normalization)
-  - Celery (task queue, planned), RabbitMQ (broker, planned)
 - Frontend:
   - Astro 5 (static site generation, routing)
   - React 19 (interactive components - Islands Architecture)
@@ -73,7 +72,6 @@ See also: `.ai/tech-stack.md`
 - Supabase account (or local PostgreSQL 14+)
 - OpenAI API key
 - Google Gemini API key (for OCR)
-- Optional: RabbitMQ 3.12+ (for Celery, if using task queue)
 - Optional: Sentry DSN (for error tracking)
 
 ### Environment variables
@@ -118,9 +116,6 @@ WEB_APP_URL=http://localhost:4321
 # Freemium Limits
 MONTHLY_BILLS_LIMIT=100
 
-# Celery / RabbitMQ (optional, for future async tasks)
-CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
-CELERY_RESULT_BACKEND=rpc://
 
 # Sentry (optional)
 SENTRY_DSN=
@@ -147,18 +142,6 @@ alembic upgrade head
 
 # 5) Start the API server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Task queue (Celery) - Optional
-
-> **Note:** Celery is configured but not yet fully implemented. This section is for future use.
-
-```bash
-# Start RabbitMQ (Docker example)
-docker run --rm -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-
-# Start Celery worker (when implemented)
-# celery -A src.worker.celery_app worker --loglevel=INFO
 ```
 
 ### Telegram bot
@@ -208,11 +191,6 @@ If you need a unified entrypoint, configure Nginx to proxy to:
   - Lint (example): `ruff check .` or `flake8`
   - Tests: `pytest -q`
   - Tests with coverage: `pytest --cov=src --cov-report=html`
-
-- Celery (optional, when implemented)
-
-  - Worker: `celery -A src.worker.celery_app worker --loglevel=INFO`
-  - Beat (if scheduled tasks): `celery -A src.worker.celery_app beat`
 
 - Frontend (from `astro/` directory)
   - Dev: `npm run dev`
@@ -317,16 +295,18 @@ More information: `astro/src/test/README.md`
 
 ## Project status
 
-MVP in progress (~75% complete). Current focus:
+MVP in progress (~90% complete). Current focus:
 
 - ✅ OCR Service (LLM-based with Gemini API) - **Completed**
 - ✅ Telegram Bot - receipt image upload and Bill creation - **Completed**
 - ✅ User isolation and rate limiting - **Completed**
 - ✅ Storage Service (Supabase) - **Completed**
 - ✅ Receipt Processing Pipeline (OCR → AI → Database) - **Completed**
-- ✅ AI Categorization Service (normalization, Product Index mapping) - **Completed** (2025-01-27)
-- 🟡 Reports module (daily/weekly/monthly summaries) - **Planned**
-- 🟡 Verification workflow improvements - **Planned**
+- ✅ AI Categorization Service (normalization, Product Index mapping) - **Completed**
+- ✅ Reports module (daily/weekly/monthly summaries) - **Completed**
+- ✅ Verification workflow (BillVerificationService) - **Completed**
+- 🟢 Admin endpoints - **Planned (Nice to have)**
+- 🟢 Security enhancements - **Planned (Nice to have)**
 
 Success metrics:
 

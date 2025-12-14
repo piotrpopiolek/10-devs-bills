@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { ProcessingStatus, Shop } from '@/types';
+import { formatShopName } from '@/lib/utils/formatting';
 
 interface BillsToolbarProps {
   status?: ProcessingStatus;
@@ -134,7 +135,7 @@ export const BillsToolbar: React.FC<BillsToolbarProps> = ({
                 <SelectItem value="all">Wszystkie sklepy</SelectItem>
                 {shops.map((shop) => (
                   <SelectItem key={shop.id} value={shop.id.toString()}>
-                    {shop.name}
+                    {formatShopName(shop.name)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BillStatusBadge } from './BillStatusBadge';
+import { formatShopName } from '@/lib/utils/formatting';
 
 interface BillsTableProps {
   data: BillResponse[];
@@ -101,9 +102,10 @@ export const BillsTable: React.FC<BillsTableProps> = ({
         <TableBody>
           {data.map((bill) => {
             // Get shop name from shopsMap if shop_id is available, otherwise use shop object
-            const shopName = bill.shop?.name || 
+            const rawShopName = bill.shop?.name || 
               (bill.shop_id && shopsMap.get(bill.shop_id)) || 
-              '-';
+              null;
+            const shopName = formatShopName(rawShopName);
             
             return (
               <TableRow 

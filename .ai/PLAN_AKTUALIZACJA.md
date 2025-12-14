@@ -1,7 +1,7 @@
 # Plan kolejnych kroków — Bills MVP (Zaktualizowany)
 
-**Data aktualizacji:** 2025-12-08 (zaktualizowano: Receipt Processing Pipeline ukończony)  
-**Status ogólny:** ~65% ukończone
+**Data aktualizacji:** 2025-12-14 (zaktualizowano: Reports, Verification workflow ukończone)  
+**Status ogólny:** ~90% ukończone
 
 ---
 
@@ -152,7 +152,7 @@
   - ✅ Factory function dla Dependency Injection (`get_bills_processor_service()`)
   - ✅ Obsługa błędów z zapisem error_message
 - **Brakujące (opcjonalne, post-MVP):**
-  - 🟢 Background task (Dramatiq/Celery) dla async processing (można odłożyć na post-MVP)
+  - 🟢 Background task (Dramatiq) dla async processing (można odłożyć na post-MVP)
   - 🟢 Testy jednostkowe i integracyjne
 - **Pliki:** `backend/src/processing/service.py`, `backend/src/processing/dependencies.py`, `backend/src/telegram/handlers.py`
 
@@ -160,18 +160,19 @@
 
 ## 🟡 Ważne (Dla pełnego MVP)
 
-### 2.1. Reports module
+### 2.1. Reports module ✅
 
-- **Status:** Brak
+- **Status:** Ukończone
 - **Priorytet:** Średni
-- **Zadania:**
-  - Utworzyć `backend/src/reports/` module
-  - Zaimplementować `GET /api/v1/reports/daily`
-  - Zaimplementować `GET /api/v1/reports/weekly`
-  - Zaimplementować `GET /api/v1/reports/monthly`
-  - Dodać logikę agregacji (top categories, shops breakdown)
-  - Filtrować po `current_user.id`
-- **Szacunek:** 6-8h
+- **Zaimplementowane:**
+  - ✅ `backend/src/reports/` module utworzony
+  - ✅ `GET /api/v1/reports/daily` - raport dzienny z top kategoriami i sklepami
+  - ✅ `GET /api/v1/reports/weekly` - raport tygodniowy z daily breakdown
+  - ✅ `GET /api/v1/reports/monthly` - raport miesięczny z weekly breakdown, top shops
+  - ✅ Logika agregacji (top categories, shops breakdown, daily/weekly breakdown)
+  - ✅ Filtrowanie po `current_user.id`
+  - ✅ Walidacja dat (nie w przyszłości)
+- **Pliki:** `backend/src/reports/routes.py`, `backend/src/reports/services.py`, `backend/src/reports/schemas.py`
 
 ### 3.2. Telegram Bot Service (rozbudowa)
 
@@ -261,10 +262,10 @@
 - ✅ Rate limiting middleware
 - ✅ User isolation w Bills (wszystkie endpointy zabezpieczone)
 
-### Sprint 2 (Tydzień 3-4): Core Features
+### Sprint 2 (Tydzień 3-4): Core Features ✅
 
-- 🟡 Reports module (daily/weekly/monthly)
-- ✅ Telegram Bot Service - obsługa zdjęć (zrobione, brak integracji z OCR)
+- ✅ Reports module (daily/weekly/monthly) - **UKOŃCZONE**
+- ✅ Telegram Bot Service - obsługa zdjęć z integracją OCR - **UKOŃCZONE**
 
 ### Sprint 3 (Tydzień 5-6): AI & Processing
 
@@ -274,8 +275,8 @@
 
 ### Sprint 4 (Tydzień 7-8): Polish & Integration
 
-- 🟡 Verification workflow improvements
-- 🟡 Telegram Bot Service - pełna integracja z Reports
+- ✅ Verification workflow - **UKOŃCZONE**
+- ✅ Telegram Bot Service - integracja z Reports (komendy /dzis, /tydzien, /miesiac) - **UKOŃCZONE**
 - 🟢 Admin endpoints
 - 🟢 Security enhancements
 
@@ -297,9 +298,9 @@
 
 ### Ważne (dla pełnego MVP):
 
-- 🟡 Reports
-- 🟡 Telegram Bot Service (rozbudowa)
-- 🟡 Verification workflow
+- ✅ Reports - **UKOŃCZONE**
+- ✅ Telegram Bot Service (rozbudowa) - **UKOŃCZONE**
+- ✅ Verification workflow - **UKOŃCZONE**
 
 ### Nice to have (można odłożyć):
 
@@ -310,9 +311,9 @@
 
 ## 📊 Postęp ogólny
 
-- **Ukończone:** ~75% (+10% od ostatniej aktualizacji)
-- **W trakcie:** ~0% (AI Categorization Service - ukończone)
-- **Do zrobienia:** ~25%
+- **Ukończone:** ~90% (+15% od ostatniej aktualizacji)
+- **W trakcie:** ~0%
+- **Do zrobienia:** ~10% (Admin endpoints, Security enhancements, Testy)
 
 **Ostatnie osiągnięcia:**
 
@@ -344,8 +345,11 @@
 **Następne kroki (priorytet):**
 
 1. ✅ AI Categorization Service - **UKOŃCZONE**
-2. 🟡 Reports module (daily/weekly/monthly) - **WAŻNE dla pełnego MVP**
-3. 🟡 Verification workflow improvements - **WAŻNE dla pełnego MVP**
+2. ✅ Reports module (daily/weekly/monthly) - **UKOŃCZONE**
+3. ✅ Verification workflow - **UKOŃCZONE**
+4. 🟢 Admin endpoints - **Nice to have**
+5. 🟢 Security enhancements - **Nice to have**
+6. 🟢 Testy jednostkowe i integracyjne - **Nice to have**
 
 **Uwaga:** OCR Service został zaimplementowany z użyciem Gemini API (podobne rozwiązanie LLM-based jak planowane OpenAI Vision API). Pełny OCR z PaddlePaddle zostanie zaimplementowany po MVP jako ulepszenie.
 

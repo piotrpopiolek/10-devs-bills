@@ -11,7 +11,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { BillStatusBadge } from '@/components/bills/BillStatusBadge';
-import { formatCurrency, formatDate } from '@/lib/utils/formatting';
+import { formatCurrency, formatDate, formatShopName } from '@/lib/utils/formatting';
 import { cn } from '@/lib/utils';
 
 interface RecentBillsListProps {
@@ -92,15 +92,10 @@ export const RecentBillsList: React.FC<RecentBillsListProps> = ({
     return formatCurrency(numAmount);
   };
 
-  // Formatuj nazwę sklepu
-  const formatShopName = (bill: BillResponse): string => {
-    if (bill.shop?.name) {
-      return bill.shop.name;
-    }
-    if (bill.shop_name) {
-      return bill.shop_name;
-    }
-    return 'Nieznany sklep';
+  // Formatuj nazwę sklepu z bill
+  const getShopName = (bill: BillResponse): string => {
+    const shopName = bill.shop?.name || bill.shop_name;
+    return formatShopName(shopName);
   };
 
   return (
@@ -125,7 +120,7 @@ export const RecentBillsList: React.FC<RecentBillsListProps> = ({
                 <TableCell className="font-medium">
                   {formatDate(bill.bill_date)}
                 </TableCell>
-                <TableCell>{formatShopName(bill)}</TableCell>
+                <TableCell>{getShopName(bill)}</TableCell>
                 <TableCell className="text-right">
                   {formatAmount(bill.total_amount)}
                 </TableCell>
