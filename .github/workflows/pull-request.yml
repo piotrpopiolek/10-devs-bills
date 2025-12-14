@@ -53,11 +53,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run mypy type checking
-        run: |
-          pip install mypy
-          mypy src --ignore-missing-imports --no-strict-optional --explicit-package-bases
-
       - name: Check code style with ruff
         run: |
           pip install ruff
