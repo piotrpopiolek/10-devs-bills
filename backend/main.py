@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -38,6 +39,10 @@ logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)  # Keep SQL logs v
 async def lifespan(app: FastAPI):
     # Startup: Initialize Telegram Bot
     await TelegramBotService.get_application()
+    # Give bot a moment to fully initialize before registering commands
+    await asyncio.sleep(0.5)
+    # Register bot commands after full initialization
+    await TelegramBotService.register_commands()
     yield
     # Shutdown: Stop Telegram Bot
     await TelegramBotService.shutdown()

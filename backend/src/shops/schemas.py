@@ -2,21 +2,37 @@ from datetime import datetime
 from typing import Optional
 from pydantic import Field, field_validator
 from src.common.schemas import AppBaseModel, PaginatedResponse
+from src.shops.normalization import normalize_shop_name, normalize_shop_address
 
 class ShopValidationMixin:
     
-    @field_validator('name', check_fields=False)
+    @field_validator('name', mode='before')
     @classmethod
     def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        """
+        Normalizuje nazwę sklepu przed walidacją.
+        
+        Transformacje: lowercase, trim, usunięcie cudzysłowów, normalizacja białych znaków.
+        """
         if v is not None:
-            if not v:
-                 raise ValueError("Shop name cannot be empty")
+            normalized = normalize_shop_name(v)
+            if not normalized:
+                raise ValueError("Shop name cannot be empty after normalization")
+            return normalized
         return v
 
-    @field_validator('address', check_fields=False)
+    @field_validator('address', mode='before')
     @classmethod
     def validate_address(cls, v: Optional[str]) -> Optional[str]:
-        return v or None
+        """
+        Normalizuje adres sklepu przed walidacją.
+        
+        Transformacje: lowercase, trim, usunięcie przecinków, normalizacja skrótu ul., 
+        usunięcie średników (wielokrotne adresy), normalizacja białych znaków.
+        """
+        if v is not None:
+            return normalize_shop_address(v)
+        return None
 
 # --- BASE MODEL ---
 class ShopBase(AppBaseModel, ShopValidationMixin):

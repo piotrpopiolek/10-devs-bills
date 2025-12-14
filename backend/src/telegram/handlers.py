@@ -16,7 +16,15 @@ from src.processing.dependencies import get_bills_processor_service
 from src.bills.dependencies import get_bill_verification_service
 from src.telegram.context import get_or_create_session, get_storage_service_for_telegram, get_user
 from src.telegram.error_mapping import get_user_message
-from src.telegram.utils import format_bill_item_for_verification, create_verification_keyboard
+from src.telegram.utils import (
+    format_bill_item_for_verification,
+    create_verification_keyboard,
+    format_daily_report,
+    format_weekly_report,
+    format_monthly_report,
+)
+from src.reports.services import ReportService
+from src.reports.exceptions import InvalidDateRangeError, InvalidMonthFormatError
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +80,211 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def daily_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Raport dzienny - funkcja w przygotowaniu.")
+    """
+    Handle /dzis command - generate daily expense report.
+    
+    Most Koncepcyjny (PHP → Python):
+    W Symfony/Laravel używałbyś Command z argumentami (Symfony Console lub Artisan).
+    W python-telegram-bot argumenty są dostępne przez context.args - idiomatyczne
+    podejście dla botów Telegram, gdzie argumenty są przekazywane jako lista stringów.
+    W tym przypadku, jeśli nie ma argumentów, używamy dzisiejszej daty (domyślna wartość).
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
+    
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
+    # Parse optional date argument (format: YYYY-MM-DD)
+    from datetime import date as date_type
+    report_date = date_type.today()  # Default: today
+    
+    if context.args and len(context.args) > 0:
+        try:
+            # Parse date from argument (format: YYYY-MM-DD)
+            report_date = date_type.fromisoformat(context.args[0])
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ Nieprawidłowy format daty.\n\n"
+                "Użycie: /dzis [YYYY-MM-DD]\n"
+                "Przykład: /dzis 2024-01-15\n"
+                "Jeśli nie podasz daty, zostanie użyta dzisiejsza data."
+            )
+            return
+    
+    async with get_or_create_session() as session:
+        try:
+            report_service = ReportService(session)
+            report = await report_service.get_daily_report(user_id, report_date)
+            
+            # Format and send report
+            formatted_report = format_daily_report(report)
+            await update.message.reply_text(formatted_report)
+            
+        except InvalidDateRangeError as e:
+            await update.message.reply_text(str(e))
+        except Exception as e:
+            logger.error(f"Error generating daily report for user {user_id}: {e}", exc_info=True)
+            await update.message.reply_text(get_user_message(e))
 
 
 async def weekly_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Raport tygodniowy - funkcja w przygotowaniu.")
+    """
+    Handle /tydzien command - generate weekly expense report.
+    
+    Most Koncepcyjny (PHP → Python):
+    Podobnie jak w daily_report_command, używamy context.args do parsowania opcjonalnej daty.
+    Jeśli nie ma argumentu, obliczamy początek bieżącego tygodnia (poniedziałek).
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
+    
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
+    # Parse optional week_start argument (format: YYYY-MM-DD, Monday)
+    from datetime import date as date_type, timedelta
+    today = date_type.today()
+    days_since_monday = today.weekday()
+    week_start = today - timedelta(days=days_since_monday)  # Default: current week start
+    
+    if context.args and len(context.args) > 0:
+        try:
+            # Parse date from argument (format: YYYY-MM-DD)
+            week_start = date_type.fromisoformat(context.args[0])
+            # Validate it's Monday (weekday() == 0)
+            if week_start.weekday() != 0:
+                await update.message.reply_text(
+                    "⚠️ Data musi być poniedziałkiem.\n\n"
+                    "Użycie: /tydzien [YYYY-MM-DD]\n"
+                    "Przykład: /tydzien 2024-01-15 (musi być poniedziałek)\n"
+                    "Jeśli nie podasz daty, zostanie użyty początek bieżącego tygodnia."
+                )
+                return
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ Nieprawidłowy format daty.\n\n"
+                "Użycie: /tydzien [YYYY-MM-DD]\n"
+                "Przykład: /tydzien 2024-01-15 (musi być poniedziałek)\n"
+                "Jeśli nie podasz daty, zostanie użyty początek bieżącego tygodnia."
+            )
+            return
+    
+    async with get_or_create_session() as session:
+        try:
+            report_service = ReportService(session)
+            report = await report_service.get_weekly_report(user_id, week_start)
+            
+            # Format and send report
+            formatted_report = format_weekly_report(report)
+            await update.message.reply_text(formatted_report)
+            
+        except InvalidDateRangeError as e:
+            await update.message.reply_text(str(e))
+        except Exception as e:
+            logger.error(f"Error generating weekly report for user {user_id}: {e}", exc_info=True)
+            await update.message.reply_text(get_user_message(e))
+
+
+async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle /prywatnosc command - display privacy policy.
+    
+    Most Koncepcyjny (PHP → Python):
+    W Symfony/Laravel używałbyś Command do wyświetlania statycznych treści lub linków.
+    W python-telegram-bot po prostu wysyłamy wiadomość tekstową z informacjami o prywatności.
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    privacy_text = (
+        "🔒 POLITYKA PRYWATNOŚCI\n"
+        "─────────────────────\n\n"
+        "Twoje dane są dla nas ważne. Oto jak je przetwarzamy:\n\n"
+        "📸 ZDJĘCIA PARAGONÓW:\n"
+        "• Zdjęcia są przetwarzane automatycznie przez system OCR\n"
+        "• Po przetworzeniu zdjęcia są usuwane z serwera\n"
+        "• Przechowujemy tylko zanonimizowane dane o produktach i kategoriach\n\n"
+        "📊 DANE O WYDATKACH:\n"
+        "• Zapisujemy tylko informacje o produktach, cenach i kategoriach\n"
+        "• Nie przetwarzamy danych osobowych z paragonów (np. imię kasjera)\n"
+        "• Twoje dane są dostępne tylko dla Ciebie\n\n"
+        "🔐 BEZPIECZEŃSTWO:\n"
+        "• Wszystkie dane są szyfrowane podczas przesyłania\n"
+        "• Dostęp do danych wymaga autoryzacji\n"
+        "• Nie udostępniamy Twoich danych osobom trzecim\n\n"
+        "❓ PYTANIA?\n"
+        "Jeśli masz pytania dotyczące prywatności, skontaktuj się z nami."
+    )
+    
+    await update.message.reply_text(privacy_text)
 
 
 async def monthly_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Raport miesięczny - funkcja w przygotowaniu.")
+    """
+    Handle /miesiac command - generate monthly expense report.
+    
+    Most Koncepcyjny (PHP → Python):
+    Podobnie jak w poprzednich komendach, używamy context.args do parsowania opcjonalnego miesiąca.
+    Format: YYYY-MM (np. "2024-01"). Jeśli nie ma argumentu, używamy bieżącego miesiąca.
+    """
+    if not update.message or not update.effective_user:
+        return
+    
+    user = get_user()
+    if not user:
+        logger.error(f"User not found in context for telegram_id {update.effective_user.id}")
+        await update.message.reply_text("Błąd autoryzacji. Spróbuj ponownie za chwilę.")
+        return
+    
+    # Access user.id before entering async context to avoid lazy-loading issues
+    user_id = user.id
+    
+    # Parse optional month argument (format: YYYY-MM)
+    from datetime import date as date_type
+    today = date_type.today()
+    month = today.strftime("%Y-%m")  # Default: current month
+    
+    if context.args and len(context.args) > 0:
+        month = context.args[0]
+        # Validate format (basic check, ReportService will do full validation)
+        if not month or len(month) != 7 or month[4] != '-':
+            await update.message.reply_text(
+                "⚠️ Nieprawidłowy format miesiąca.\n\n"
+                "Użycie: /miesiac [YYYY-MM]\n"
+                "Przykład: /miesiac 2024-01\n"
+                "Jeśli nie podasz miesiąca, zostanie użyty bieżący miesiąc."
+            )
+            return
+    
+    async with get_or_create_session() as session:
+        try:
+            report_service = ReportService(session)
+            report = await report_service.get_monthly_report(user_id, month)
+            
+            # Format and send report
+            formatted_report = format_monthly_report(report)
+            await update.message.reply_text(formatted_report)
+            
+        except InvalidMonthFormatError as e:
+            await update.message.reply_text(str(e))
+        except InvalidDateRangeError as e:
+            await update.message.reply_text(str(e))
+        except Exception as e:
+            logger.error(f"Error generating monthly report for user {user_id}: {e}", exc_info=True)
+            await update.message.reply_text(get_user_message(e))
 
 
 async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -12,6 +12,10 @@ from src.common.exceptions import (
     ResourceAlreadyExistsError,
     UserCreationError
 )
+from src.reports.exceptions import (
+    InvalidDateRangeError,
+    InvalidMonthFormatError
+)
 
 
 def get_user_message(error: Exception) -> str:
@@ -35,6 +39,12 @@ def get_user_message(error: Exception) -> str:
     
     if isinstance(error, ResourceNotFoundError):
         return "Nie znaleziono zasobu. Spróbuj ponownie."
+    
+    if isinstance(error, InvalidDateRangeError):
+        return str(error)  # Error message is already user-friendly in Polish
+    
+    if isinstance(error, InvalidMonthFormatError):
+        return str(error)  # Error message is already user-friendly in Polish
     
     if isinstance(error, AppError):
         return f"Wystąpił błąd: {error.message}"

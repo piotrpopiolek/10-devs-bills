@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.services import AppService
 from src.shops.models import Shop
 from src.shops.schemas import ShopCreate, ShopUpdate
+from src.shops.normalization import normalize_shop_name, normalize_shop_address
 from src.common.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
 
 logger = logging.getLogger(__name__)
@@ -52,19 +53,25 @@ class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
         Find shop by name and address.
 
         Args:
-            name: Shop name
-            address: Shop address (optional)
+            name: Shop name (będzie znormalizowany przed wyszukiwaniem)
+            address: Shop address (optional, będzie znormalizowany przed wyszukiwaniem)
             exclude_id: Optional shop ID to exclude from search
 
         Returns:
             Shop instance if found, None otherwise
 
         Note:
-            This is case-sensitive (not using LOWER) as per database constraint.
+            Name i address są normalizowane przed wyszukiwaniem (defensive programming).
+            Baza danych przechowuje znormalizowane wartości dzięki standaryzacji w schemas/services.
         """
+        # Normalizacja dla bezpieczeństwa (defensive programming)
+        # Zapewnia, że wyszukiwanie działa nawet jeśli dane nie były wcześniej znormalizowane
+        normalized_name = normalize_shop_name(name)
+        normalized_address = normalize_shop_address(address) if address else None
+        
         stmt = select(Shop).where(
-            Shop.name == name,
-            Shop.address == address
+            Shop.name == normalized_name,
+            Shop.address == normalized_address
         )
         
         if exclude_id is not None:
@@ -78,8 +85,8 @@ class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
         Get existing shop by name and address, or create new one.
 
         Args:
-            name: Shop name (required)
-            address: Shop address (optional)
+            name: Shop name (required) - będzie znormalizowany przed wyszukiwaniem/tworzeniem
+            address: Shop address (optional) - będzie znormalizowany przed wyszukiwaniem/tworzeniem
 
         Returns:
             Shop instance (existing or newly created)
@@ -89,28 +96,39 @@ class ShopService(AppService[Shop, ShopCreate, ShopUpdate]):
             If shop with same name+address exists, returns existing.
             Otherwise creates new shop.
             Handles race conditions (concurrent creation) by retrying fetch on IntegrityError.
+            
+            STANDARYZACJA: Nazwa i adres są normalizowane przed zapisem do bazy danych,
+            zgodnie z "złotym standardem" (lowercase, trim, bez przecinków, znormalizowane białe znaki).
         """
-        # Try to find existing shop
-        existing_shop = await self._find_by_name_and_address(name, address)
+        # STANDARYZACJA przed wyszukiwaniem/tworzeniem
+        normalized_name = normalize_shop_name(name)
+        normalized_address = normalize_shop_address(address) if address else None
+        
+        # Walidacja: nazwa nie może być pusta po normalizacji
+        if not normalized_name:
+            raise ValueError("Shop name cannot be empty after normalization")
+        
+        # Try to find existing shop (używamy znormalizowanych wartości)
+        existing_shop = await self._find_by_name_and_address(normalized_name, normalized_address)
 
         if existing_shop:
-            logger.info(f"Found existing shop: {existing_shop.id} ({name})")
+            logger.info(f"Found existing shop: {existing_shop.id} ({normalized_name})")
             return existing_shop
 
-        # Create new shop
-        new_shop = Shop(name=name, address=address)
+        # Create new shop (z znormalizowanymi wartościami)
+        new_shop = Shop(name=normalized_name, address=normalized_address)
         self.session.add(new_shop)
 
         try:
             await self.session.commit()
             await self.session.refresh(new_shop)
-            logger.info(f"Created new shop: {new_shop.id} ({name})")
+            logger.info(f"Created new shop: {new_shop.id} ({normalized_name})")
             return new_shop
         except IntegrityError as e:
             await self.session.rollback()
             # Race condition: shop was created by another request
-            # Retry: fetch existing shop
-            existing_shop = await self._find_by_name_and_address(name, address)
+            # Retry: fetch existing shop (używamy znormalizowanych wartości)
+            existing_shop = await self._find_by_name_and_address(normalized_name, normalized_address)
             if existing_shop:
                 logger.info(f"Shop created concurrently, returning existing: {existing_shop.id}")
                 return existing_shop

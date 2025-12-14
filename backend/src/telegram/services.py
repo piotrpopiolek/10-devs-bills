@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Update
+from telegram import Update, BotCommand, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, TypeHandler, CallbackQueryHandler, filters
 
 from src.config import settings
@@ -40,6 +40,18 @@ class TelegramBotService:
             await cls._application.initialize()
             await cls._application.start()
         return cls._application
+    
+    @classmethod
+    async def register_commands(cls):
+        """
+        Public method to register bot commands.
+        Should be called after application is fully initialized.
+        """
+        if cls._application is None:
+            logger.warning("Cannot register commands: application not initialized")
+            return
+        
+        await cls._register_bot_commands(cls._application.bot)
 
     @classmethod
     async def shutdown(cls):
@@ -49,6 +61,41 @@ class TelegramBotService:
         if cls._application:
             await cls._application.stop()
             await cls._application.shutdown()
+
+    @classmethod
+    async def _register_bot_commands(cls, bot: Bot):
+        """
+        Register bot commands for Telegram UI command suggestions.
+        
+        Most Koncepcyjny (PHP → Python):
+        W Symfony/Laravel używałbyś konfiguracji w pliku YAML/JSON do definiowania komend CLI.
+        W python-telegram-bot używamy BotCommand i set_my_commands() - idiomatyczne podejście
+        do rejestracji komend w Telegram Bot API, które automatycznie wyświetla je jako podpowiedzi
+        w interfejsie użytkownika (przycisk menu komend).
+        
+        Args:
+            bot: Bot instance (LoggingBot extends Bot, so this works)
+        """
+        commands = [
+            BotCommand("start", "Rozpocznij pracę z botem"),
+            BotCommand("login", "Zaloguj się do aplikacji webowej"),
+            BotCommand("dzis", "Raport wydatków za dzisiaj"),
+            BotCommand("tydzien", "Raport wydatków za tydzień"),
+            BotCommand("miesiac", "Raport wydatków za miesiąc"),
+            BotCommand("prywatnosc", "Polityka prywatności"),
+            BotCommand("verify", "Weryfikuj pozycje z rachunku"),
+        ]
+        
+        try:
+            result = await bot.set_my_commands(commands)
+            logger.info(f"Bot commands registered successfully. Result: {result}")
+            # Verify commands were set by retrieving them
+            registered_commands = await bot.get_my_commands()
+            logger.info(f"Verified registered commands: {[cmd.command for cmd in registered_commands]}")
+        except Exception as e:
+            logger.error(f"Failed to register bot commands: {e}", exc_info=True)
+            # Don't fail initialization if command registration fails
+            # Commands will still work, just won't show in UI suggestions
 
     @classmethod
     async def _register_handlers(cls, app: Application):
@@ -63,6 +110,7 @@ class TelegramBotService:
         app.add_handler(CommandHandler("dzis", handlers.daily_report_command))
         app.add_handler(CommandHandler("tydzien", handlers.weekly_report_command))
         app.add_handler(CommandHandler("miesiac", handlers.monthly_report_command))
+        app.add_handler(CommandHandler("prywatnosc", handlers.privacy_command))
         app.add_handler(CommandHandler("verify", handlers.verify_command))
         
         # Handle photos (receipts)
