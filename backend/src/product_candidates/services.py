@@ -1,6 +1,8 @@
-from typing import Optional
+from typing import Optional, Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
 
 from src.common.services import AppService
 from src.product_candidates.models import ProductCandidate
@@ -20,6 +22,70 @@ class ProductCandidateService(AppService[ProductCandidate, ProductCandidateCreat
     
     def __init__(self, session: AsyncSession):
         super().__init__(model=ProductCandidate, session=session)
+
+    async def get_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        category_id: Optional[int] = None
+    ) -> dict[str, Any]:
+        """
+        Pobiera listę product candidates z opcjonalnym filtrowaniem.
+        
+        Args:
+            skip: Liczba elementów do pominięcia
+            limit: Maksymalna liczba elementów do zwrócenia
+            search: Wyszukiwanie po representative_name (case-insensitive, partial match)
+            status: Filtr po statusie (pending, approved, rejected)
+            category_id: Filtr po kategorii
+            
+        Returns:
+            Słownik z items, total, skip, limit
+        """
+        # Buduj zapytanie z filtrami
+        stmt = select(ProductCandidate)
+        count_stmt = select(func.count()).select_from(ProductCandidate)
+        
+        # Załaduj relacje
+        stmt = stmt.options(
+            selectinload(ProductCandidate.category),
+            selectinload(ProductCandidate.product_index)
+        )
+        
+        # Filtry
+        conditions = []
+        
+        if search:
+            conditions.append(
+                ProductCandidate.representative_name.ilike(f"%{search}%")
+            )
+        
+        if status:
+            conditions.append(ProductCandidate.status == status)
+        
+        if category_id is not None:
+            conditions.append(ProductCandidate.category_id == category_id)
+        
+        # Zastosuj warunki
+        if conditions:
+            where_clause = conditions[0]
+            for condition in conditions[1:]:
+                where_clause = where_clause & condition
+            stmt = stmt.where(where_clause)
+            count_stmt = count_stmt.where(where_clause)
+        
+        # Liczenie total
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+        
+        # Pobranie danych z paginacją i sortowaniem
+        stmt = stmt.order_by(ProductCandidate.created_at.desc()).offset(skip).limit(limit)
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
 
     async def create(self, data: ProductCandidateCreate) -> ProductCandidate:
         """

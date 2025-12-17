@@ -8,7 +8,8 @@ import {
   Menu,
   X,
   LogOut,
-  User
+  User,
+  UserCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { title: 'Paragony', href: '/bills', icon: Receipt },
   { title: 'Sklepy', href: '/shops', icon: Store },
   { title: 'Produkty', href: '/products', icon: Package },
+  { title: 'Kandydaci', href: '/product-candidates', icon: UserCheck },
   { title: 'Kategorie', href: '/categories', icon: FolderTree },
 ];
 

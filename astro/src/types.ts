@@ -111,6 +111,49 @@ export interface ProductResponse extends Pick<Product, 'id' | 'name' | 'synonyms
 export type ProductListResponse = PaginatedResponse<ProductResponse>
 
 // ============================================================================
+// PRODUCT CANDIDATE DTOs
+// ============================================================================
+
+export interface ProductCandidateResponse {
+  id: number
+  representative_name: string
+  user_confirmations: number
+  category_id: number | null
+  product_index_id: number | null
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+  updated_at: string
+  category?: Pick<Category, 'id' | 'name'> | null
+  product_index?: Pick<Product, 'id' | 'name'> | null
+}
+
+export type ProductCandidateListResponse = PaginatedResponse<ProductCandidateResponse>
+
+export interface ProductCandidatesQueryParams {
+  search?: string
+  status?: 'pending' | 'approved' | 'rejected'
+  category_id?: number
+  skip?: number
+  limit?: number
+}
+
+export interface CreateProductCandidateCommand {
+  representative_name: string
+  user_confirmations?: number
+  category_id?: number
+  product_index_id?: number
+  status?: 'pending' | 'approved' | 'rejected'
+}
+
+export interface UpdateProductCandidateCommand {
+  representative_name?: string
+  user_confirmations?: number
+  category_id?: number
+  product_index_id?: number
+  status?: 'pending' | 'approved' | 'rejected'
+}
+
+// ============================================================================
 // BILL ITEM DTOs
 // ============================================================================
 

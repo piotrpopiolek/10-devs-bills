@@ -11,6 +11,7 @@ from src.bills.routes import router as bills_router
 from src.bill_items.routes import router as bill_items_router
 from src.product_index_aliases.routes import router as product_index_aliases_router
 from src.product_indexes.routes import router as product_indexes_router
+from src.product_candidates.routes import router as product_candidates_router
 from src.shops.routes import router as shops_router
 from src.telegram_messages.routes import router as telegram_messages_router
 from src.users.routes import router as users_router
@@ -78,6 +79,7 @@ app.include_router(bills_router, prefix="/api/v1/bills", tags=["bills"])
 app.include_router(bill_items_router, prefix="/api/v1/bill-items", tags=["bill-items"])
 app.include_router(product_index_aliases_router, prefix="/api/v1/product-index-aliases", tags=["product-index-aliases"])
 app.include_router(product_indexes_router, prefix="/api/v1/product-indexes", tags=["product-indexes"])
+app.include_router(product_candidates_router, prefix="/api/v1/product-candidates", tags=["product-candidates"])
 app.include_router(shops_router, prefix="/api/v1/shops", tags=["shops"])
 app.include_router(telegram_messages_router, prefix="/api/v1/telegram-messages", tags=["telegram-messages"])
 app.include_router(telegram_router, prefix="/api/v1", tags=["telegram"])

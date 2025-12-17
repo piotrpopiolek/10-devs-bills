@@ -183,8 +183,8 @@ class OCRService:
         system_prompt = """You are an expert OCR system specialized in reading Polish retail receipts (paragony fiskalne).
 
 Your task is to extract the following information:
-1. Shop name and address
-2. Purchase date and time
+1. Shop name and address in strict order: "Shop name, ul. Example Street 123, 00-000 Example City"
+2. Purchase date and time in format: 16.12.2025 12:00
 3. List of all purchased items with:
    - Product name (exactly as written on receipt)
    - Quantity (default 1.0 if not specified)
