@@ -75,8 +75,6 @@ Opcje wdrożenia migracji:
 
 Przygotuj skrypt (np. w backend/prestart.sh), który uruchamia migracje przed startem aplikacji. Dzięki temu baza zaktualizuje się sama przy każdym wdrożeniu nowej wersji.
 
-**Uwaga**: Alembic jest w requirements.txt, ale nie jest używany w projekcie. Można go usunąć jeśli nie planujesz migracji na Alembic.
-
 Faza 3: Infrastruktura (Railway)
 [ ] Inicjalizacja Projektu:
 
