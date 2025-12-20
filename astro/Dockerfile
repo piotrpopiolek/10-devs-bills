@@ -24,9 +24,13 @@ RUN apk add --no-cache gettext
 # Copy nginx configuration template
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# Create entrypoint script inline (to avoid file copy issues)
+RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
+    echo 'set -e' >> /docker-entrypoint.sh && \
+    echo 'BACKEND_URL=${BACKEND_URL:-http://backend:8000}' >> /docker-entrypoint.sh && \
+    echo 'envsubst '"'"'${BACKEND_URL}'"'"' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf' >> /docker-entrypoint.sh && \
+    echo 'exec nginx -g '"'"'daemon off;'"'"'' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
 
 # Copy built files from builder stage (after copying config files)
 COPY --from=builder /app/dist /usr/share/nginx/html
