@@ -54,8 +54,13 @@ RUN if [ -f "src/pages/bills/[id].astro" ]; then \
     fi
 
 # Build Astro application (outputs to dist/)
-# Use verbose output to see build errors
-RUN npm run build 2>&1 || (echo "Build failed, checking dist directory..." && ls -la dist/ 2>/dev/null || echo "dist/ directory does not exist" && exit 1)
+# Verify we're in the right directory and package.json exists
+RUN pwd && \
+    ls -la package.json && \
+    echo "Checking package.json scripts..." && \
+    cat package.json | grep -A 5 '"scripts"' && \
+    echo "Running build..." && \
+    npm run build
 
 # Runtime stage - nginx for serving static files
 FROM nginx:1.27-alpine
