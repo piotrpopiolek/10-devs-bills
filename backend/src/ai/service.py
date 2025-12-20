@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-import google.generativeai as genai
+import google.genai as genai
 from google.api_core import exceptions as google_exceptions
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 

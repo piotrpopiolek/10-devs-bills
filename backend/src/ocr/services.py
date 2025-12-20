@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
 from fastapi import UploadFile
-import google.generativeai as genai
+import google.genai as genai
 from google.api_core import exceptions as google_exceptions
 from tenacity import (
     retry,
