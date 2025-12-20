@@ -23,9 +23,13 @@ RUN apt-get update && apt-get install -y \
 
 # Install Supabase CLI for running migrations
 # Supabase CLI is required for `supabase db push` command
-RUN curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.deb -o /tmp/supabase.deb && \
-    dpkg -i /tmp/supabase.deb || apt-get install -yf && \
-    rm /tmp/supabase.deb
+# Using binary installation from GitHub releases
+RUN curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o /tmp/supabase.tar.gz && \
+    tar -xzf /tmp/supabase.tar.gz -C /tmp && \
+    mv /tmp/supabase /usr/local/bin/supabase && \
+    chmod +x /usr/local/bin/supabase && \
+    rm /tmp/supabase.tar.gz && \
+    supabase --version
 
 # Copy requirements first for better layer caching
 # Note: Build context should be project root, so we copy from backend/
