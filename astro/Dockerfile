@@ -11,13 +11,13 @@ WORKDIR /app
 RUN apk add --no-cache gettext
 
 # Copy package files first for better layer caching
+# Railway uses /astro/Dockerfile with root as build context, so copy from astro/ subdirectory
+COPY astro/package.json astro/package-lock.json ./
+
 # Verify we have the correct package.json (should be > 500 bytes, root one is only 67 bytes)
-COPY package.json package-lock.json ./
 RUN if [ ! -f package.json ] || [ $(wc -c < package.json) -lt 500 ]; then \
-      echo "ERROR: Wrong package.json copied! Expected astro/package.json but got root one." && \
-      echo "Current package.json size: $(wc -c < package.json) bytes" && \
-      echo "Contents:" && cat package.json && \
-      echo "Please configure Railway to use 'astro' as the root directory." && \
+      echo "ERROR: Wrong package.json! Size: $(wc -c < package.json) bytes" && \
+      cat package.json && \
       exit 1; \
     fi && \
     echo "✓ Correct package.json found ($(wc -c < package.json) bytes)"
@@ -27,8 +27,8 @@ RUN if [ ! -f package.json ] || [ $(wc -c < package.json) -lt 500 ]; then \
 RUN npm ci --only=production=false && \
     npm cache clean --force
 
-# Copy application source code
-COPY . .
+# Copy application source code from astro/ subdirectory
+COPY astro/ .
 
 # Remove API routes directory (not needed for static build, handled by nginx proxy)
 # This prevents Astro from requiring an adapter for server-rendered routes
