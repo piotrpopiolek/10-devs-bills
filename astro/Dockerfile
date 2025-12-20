@@ -74,15 +74,14 @@ RUN mkdir -p /etc/nginx/templates
 RUN sed -i 's/^user.*/user nginx-user;/' /etc/nginx/nginx.conf && \
     sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
 
-# Copy nginx configuration template (server block only)
-COPY nginx.conf /etc/nginx/templates/default.conf.template
+# Copy nginx configuration template and entrypoint script from builder stage
+# (These files are copied in builder stage with COPY . ., so they're available there)
+COPY --from=builder /app/nginx.conf /etc/nginx/templates/default.conf.template
+COPY --from=builder /app/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy built static files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create healthcheck script (HEALTHCHECK doesn't support env var substitution)
 RUN echo '#!/bin/sh\nPORT=${PORT:-8080}\nwget --spider --quiet "http://localhost:${PORT}/health" || exit 1' > /usr/local/bin/healthcheck.sh && \
