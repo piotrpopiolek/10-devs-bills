@@ -18,9 +18,6 @@ RUN npm run build
 # Stage 2: Production
 FROM nginx:alpine
 
-# Copy built files from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
-
 # Install envsubst for environment variable substitution
 RUN apk add --no-cache gettext
 
@@ -30,6 +27,9 @@ COPY nginx.conf /etc/nginx/templates/default.conf.template
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+
+# Copy built files from builder stage (after copying config files)
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expose port 80
 EXPOSE 80
