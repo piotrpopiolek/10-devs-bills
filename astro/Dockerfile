@@ -25,7 +25,8 @@ COPY . .
 # This prevents Astro from requiring an adapter for server-rendered routes
 RUN rm -rf src/pages/api && \
     # Disable middleware that uses Supabase (not needed for static build)
-    # Create an empty middleware that just passes through
+    # Create middleware directory if it doesn't exist, then create an empty middleware that just passes through
+    mkdir -p src/middleware && \
     echo "import { defineMiddleware } from 'astro:middleware';" > src/middleware/index.ts && \
     echo "export const onRequest = defineMiddleware((context, next) => next());" >> src/middleware/index.ts && \
     # Fix tw-animate-css import - use node_modules path for proper resolution
