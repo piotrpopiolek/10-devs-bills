@@ -11,7 +11,16 @@ WORKDIR /app
 RUN apk add --no-cache gettext
 
 # Copy package files first for better layer caching
+# Verify we have the correct package.json (should be > 500 bytes, root one is only 67 bytes)
 COPY package.json package-lock.json ./
+RUN if [ ! -f package.json ] || [ $(wc -c < package.json) -lt 500 ]; then \
+      echo "ERROR: Wrong package.json copied! Expected astro/package.json but got root one." && \
+      echo "Current package.json size: $(wc -c < package.json) bytes" && \
+      echo "Contents:" && cat package.json && \
+      echo "Please configure Railway to use 'astro' as the root directory." && \
+      exit 1; \
+    fi && \
+    echo "✓ Correct package.json found ($(wc -c < package.json) bytes)"
 
 # Install dependencies (including devDependencies needed for build)
 # tw-animate-css is in devDependencies but needed for CSS build
