@@ -12,6 +12,10 @@ RUN npm ci
 # Copy source code (after dependencies for better caching)
 COPY . .
 
+# Remove API routes before build (not needed in production - nginx proxies to backend)
+# API routes have prerender=false which conflicts with static output
+RUN rm -rf src/pages/api
+
 # Build the application
 RUN npm run build
 
