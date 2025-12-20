@@ -6,11 +6,19 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY package*.json ./
 
+# Verify package.json has build script before installing
+RUN grep -q '"build"' package.json || (echo "ERROR: build script not found in package.json" && cat package.json && exit 1)
+
 # Install dependencies
 RUN npm ci
 
 # Copy source code (after dependencies for better caching)
-COPY . .
+# Copy files selectively to avoid overwriting package.json
+COPY src/ ./src/
+COPY public/ ./public/
+COPY astro.config.mjs ./
+COPY tsconfig.json ./
+COPY components.json ./
 
 # Remove API routes before build (not needed in production - nginx proxies to backend)
 # API routes have prerender=false which conflicts with static output

@@ -5,6 +5,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Root package.json (don't copy from parent directory)
+../package.json
+../package-lock.json
+
 # Build outputs (will be generated in container)
 dist/
 .astro/
