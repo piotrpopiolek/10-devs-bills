@@ -36,10 +36,10 @@ For full product details, see the PRD:
 
 - Backend:
   - Python 3.11+, FastAPI, Uvicorn
-  - SQLAlchemy (ORM), Alembic (migrations), Pydantic (validation)
+  - SQLAlchemy (ORM), Pydantic (validation)
   - python-telegram-bot (Telegram integration)
   - sentry-sdk (logging/monitoring)
-  - Supabase (PostgreSQL database, Storage, Auth)
+  - Supabase (PostgreSQL database, Storage, Auth, migrations)
 - Data & AI:
   - **OCR (MVP):** Google Gemini API (Gemini 1.5 Flash) - LLM-based extraction
   - **OCR (Post-MVP):** PaddlePaddle-OCR (planned for future improvements)
