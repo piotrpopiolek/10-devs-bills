@@ -21,6 +21,9 @@ FROM nginx:alpine
 # Install envsubst for environment variable substitution
 RUN apk add --no-cache gettext
 
+# Create nginx templates directory
+RUN mkdir -p /etc/nginx/templates
+
 # Create nginx configuration template inline (to avoid file copy issues)
 RUN echo 'server {' > /etc/nginx/templates/default.conf.template && \
     echo '    listen 80;' >> /etc/nginx/templates/default.conf.template && \
