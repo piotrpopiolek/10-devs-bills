@@ -6,11 +6,11 @@ Zanim dotkniesz serwerów, musisz uporządkować repozytorium, aby CI/CD "rozumi
 Plaintext
 
 / (root)
-├── .github/workflows/   # Tutaj trafią pliki YAML dla Actions
-├── backend/             # Cały kod FastAPI + Dockerfile backendu
-├── astro/            # Cały kod Astro/React + Dockerfile frontendu + nginx.conf
+├── .github/workflows/ # Tutaj trafią pliki YAML dla Actions
+├── backend/ # Cały kod FastAPI + Dockerfile backendu
+├── astro/ # Cały kod Astro/React + Dockerfile frontendu + nginx.conf
 └── README.md
-[ ] Pliki .dockerignore: Stwórz osobny .dockerignore w folderze backend/ i astro/, aby nie kopiować do kontenerów śmieci (np. node_modules, .venv, .git, __pycache__).
+[ ] Pliki .dockerignore: Stwórz osobny .dockerignore w folderze backend/ i astro/, aby nie kopiować do kontenerów śmieci (np. node_modules, .venv, .git, **pycache**).
 
 Faza 1: Konteneryzacja (Docker)
 Railway uwielbia Dockera. To Twoja gwarancja, że "działa u mnie" = "działa na produkcji".
@@ -28,10 +28,14 @@ Uruchomienie: CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 [ ] Telegram Webhook:
 
-W kodzie bota dodaj logikę wykrywającą środowisko (if ENV == 'production': start_webhook() else: start_polling()). Polling na Railway jest niestabilny przy restartach.
+✅ **JUŻ ZAIMPLEMENTOWANE**: Projekt już używa webhooków (TelegramBotService.process_webhook_update). Webhook jest dostępny pod endpointem `/api/v1/webhooks/telegram`. W produkcji upewnij się, że:
 
-1.2. Frontend (Astro + Nginx)
-To kluczowy punkt. Nginx będzie serwował pliki statyczne ORAZ działał jako bramka do API.
+- TELEGRAM_WEBHOOK_URL jest ustawione na publiczny URL backendu (np. https://backend-production.up.railway.app/api/v1/webhooks/telegram)
+- TELEGRAM_WEBHOOK_SECRET jest ustawione dla bezpieczeństwa
+- Webhook jest zarejestrowany w Telegramie (można to zrobić przez API lub dashboard Telegram)
+
+  1.2. Frontend (Astro + Nginx)
+  To kluczowy punkt. Nginx będzie serwował pliki statyczne ORAZ działał jako bramka do API.
 
 [ ] Stwórz astro/nginx.conf:
 
@@ -56,9 +60,22 @@ W panelu Supabase przejdź do Database -> Connection Pooling.
 
 Skopiuj Transaction Pooler URL (port 6543). Python w trybie async na serverlessie potrafi szybko wyczerpać limity bezpośrednich połączeń.
 
-[ ] Migracje (Alembic):
+[ ] Migracje (Supabase):
 
-Przygotuj skrypt (np. w backend/prestart.sh), który uruchamia alembic upgrade head przed startem aplikacji. Dzięki temu baza zaktualizuje się sama przy każdym wdrożeniu nowej wersji.
+Migracje znajdują się w `supabase/migrations/`.
+
+Opcje wdrożenia migracji:
+
+- **Opcja 1 (Rekomendowana)**: Użyj Supabase CLI w skrypcie prestart.sh:
+  ```bash
+  supabase db push --db-url $DATABASE_URL
+  ```
+- **Opcja 2**: Uruchamiaj migracje ręcznie przed wdrożeniem (mniej automatyczne)
+- **Opcja 3**: Użyj Supabase Dashboard do aplikowania migracji
+
+Przygotuj skrypt (np. w backend/prestart.sh), który uruchamia migracje przed startem aplikacji. Dzięki temu baza zaktualizuje się sama przy każdym wdrożeniu nowej wersji.
+
+**Uwaga**: Alembic jest w requirements.txt, ale nie jest używany w projekcie. Można go usunąć jeśli nie planujesz migracji na Alembic.
 
 Faza 3: Infrastruktura (Railway)
 [ ] Inicjalizacja Projektu:
@@ -71,15 +88,26 @@ Dodaj serwis z repozytorium GitHub.
 
 Ważne: W ustawieniach (Settings) ustaw Root Directory na /backend.
 
-W sekcji Variables dodaj: DATABASE_URL (z Supabase), TELEGRAM_TOKEN, OPENAI_API_KEY.
+W sekcji Variables dodaj wszystkie wymagane zmienne środowiskowe:
+
+- **Database**: DATABASE_URL (z Supabase Connection Pooler, port 6543)
+- **Telegram**: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_URL, TELEGRAM_WEBHOOK_SECRET
+- **AI Services**: OPENAI_API_KEY, GEMINI_API_KEY
+- **Supabase**: SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_STORAGE_BUCKET
+- **JWT**: JWT_SECRET_KEY
+- **App**: ENV=production, PORT=8000, WEB_APP_URL (URL frontendu)
+- **Opcjonalne**: Wszystkie pozostałe zmienne z backend/src/config.py (z domyślnymi wartościami jeśli mają)
 
 [ ] Serwis Frontend:
 
 Dodaj serwis z repozytorium GitHub.
 
-Ważne: W ustawieniach ustaw Root Directory na /frontend.
+Ważne: W ustawieniach ustaw Root Directory na /astro.
 
-W sekcji Variables dodaj: BACKEND_URL (adres wewnętrzny serwisu backendu, np. http://backend-production.up.railway.app lub http://backend:8000 jeśli używasz Private Networking).
+W sekcji Variables dodaj:
+
+- BACKEND_URL (adres wewnętrzny serwisu backendu, np. http://backend-production.up.railway.app lub http://backend:8000 jeśli używasz Private Networking)
+- **Uwaga**: Sprawdź czy frontend potrzebuje dodatkowych zmiennych środowiskowych (np. Supabase URL/Key dla klienta)
 
 [ ] Public Domain:
 
@@ -89,22 +117,33 @@ Faza 4: CI/CD (GitHub Actions)
 Automatyzacja testów i wdrożeń z uwzględnieniem Monorepo.
 
 4.1. Pipeline Backend (.github/workflows/backend.yml)
-[ ] Trigger: Push do main, ale z filtrem paths: ['backend/**'].
+[ ] Trigger: Push do main/master, ale z filtrem paths: ['backend/**'].
 
 [ ] Jobs:
 
 test: Instalacja Pythona, pip install, pytest (mockowanie API OpenAI i Telegrama).
 
+- Użyj working-directory: ./backend (podobnie jak w istniejącym pull-request.yml)
+
 deploy: Użyj railwayapp/cli-action (lub deploy automatyczny przez trigger w dashboardzie Railway – dla side projectu trigger w dashboardzie jest prostszy i wystarczający, o ile testy przejdą).
 
+**Uwaga**: Istnieje już `.github/workflows/pull-request.yml` z lintowaniem. Rozważ rozszerzenie go o testy lub utworzenie osobnych workflow dla deploy.
+
 4.2. Pipeline Frontend (.github/workflows/frontend.yml)
-[ ] Trigger: Push do main, filtr paths: ['astro/**'].
+[ ] Trigger: Push do main/master, filtr paths: ['astro/**'].
 
 [ ] Jobs:
 
 test: npm install, npm run test (Vitest), npm run build (sprawdzenie czy build w ogóle przechodzi).
 
+- Użyj working-directory: ./astro (podobnie jak w istniejącym pull-request.yml)
+- Sprawdź czy projekt ma skrypt `test` w package.json
+
 e2e: Opcjonalnie Playwright dla kluczowych ścieżek (np. logowanie).
+
+- Sprawdź czy istnieją już testy E2E w projekcie (szukaj w astro/e2e/)
+
+**Uwaga**: Istnieje już `.github/workflows/pull-request.yml` z lintowaniem Astro. Rozważ rozszerzenie go o testy lub utworzenie osobnych workflow dla deploy.
 
 Faza 5: "Day 2 Operations" (Monitoring i Utrzymanie)
 Twoja aplikacja już działa. Teraz sprawiamy, żeby działała długo i stabilnie.
@@ -115,9 +154,12 @@ Zainstaluj SDK Sentry w FastAPI oraz w React/Astro. To absolutna podstawa, żeby
 
 [ ] Healthchecki:
 
-W FastAPI dodaj endpoint /health.
+✅ **JUŻ ZAIMPLEMENTOWANE**: Endpoint `/health` już istnieje w `backend/src/health.py`. Dostępne są dwa endpointy:
 
-W konfiguracji Railway (Settings -> Deploy -> Healthcheck Path) ustaw /health. Jeśli aplikacja się zawiesi, Railway sam ją zrestartuje.
+- `/health` - podstawowy healthcheck
+- `/health/db` - healthcheck z testem połączenia do bazy
+
+W konfiguracji Railway (Settings -> Deploy -> Healthcheck Path) ustaw `/health`. Jeśli aplikacja się zawiesi, Railway sam ją zrestartuje.
 
 [ ] Budżet:
 
@@ -129,3 +171,22 @@ Monorepo: Rozdzielasz logikę buildów za pomocą Root Directory w Railway.
 Architektura: Nginx (Frontend) jest twoją tarczą i routerem. Ukrywa Backend przed światem (za wyjątkiem webhooków).
 
 Baza: Connection Pooler to "must-have" przy Pythonie i chmurze.
+
+## ✅ Co już jest zaimplementowane:
+
+- ✅ Healthcheck endpoint (`/health`)
+- ✅ Telegram webhook (nie polling)
+- ✅ Sentry SDK w requirements.txt (backend)
+- ✅ Struktura monorepo (backend/, astro/)
+- ✅ GitHub Actions workflow dla PR (lint)
+
+## ⚠️ Co wymaga aktualizacji/korekty:
+
+- ⚠️ Plan mówił o `/frontend` - poprawione na `/astro`
+- ⚠️ Plan mówił o Alembic - projekt używa Supabase migrations
+- ⚠️ Brak Dockerfile w backend/ i astro/
+- ⚠️ Brak .dockerignore w backend/ i astro/
+- ⚠️ Brak nginx.conf w astro/
+- ⚠️ Brak workflow dla deploy (tylko PR workflow)
+- ⚠️ Brak konfiguracji Sentry w frontendzie
+- ⚠️ Brak prestart.sh dla migracji Supabase

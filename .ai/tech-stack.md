@@ -10,12 +10,7 @@
 ---
 
 ### **Przetwarzanie Danych i AI**
-
-- **OCR:** PaddlePaddle-OCR
 - **Kategoryzacja AI:** OpenAI API
-- **Kolejka zadań:** Celery
-- **Broker** RabbitMQ
-
 ---
 
 ### **Frontend**
