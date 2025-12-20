@@ -1,97 +1,117 @@
-# Stage 1: Build
+# Build stage - Node.js environment for building Astro application
 FROM node:20-alpine AS builder
 
+# Set build arguments
+ARG NODE_ENV=production
+
+# Set working directory
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package*.json ./
-
-# Verify package.json has build script before installing
-RUN grep -q '"build"' package.json || (echo "ERROR: build script not found in package.json" && cat package.json && exit 1)
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code (after dependencies for better caching)
-# Copy files selectively to avoid overwriting package.json
-COPY src/ ./src/
-COPY public/ ./public/
-COPY astro.config.mjs ./
-COPY tsconfig.json ./
-COPY components.json ./
-
-# Remove API routes before build (not needed in production - nginx proxies to backend)
-# API routes have prerender=false which conflicts with static output
-RUN rm -rf src/pages/api
-
-# Build the application
-RUN npm run build
-
-# Stage 2: Production
-FROM nginx:alpine
-
-# Install envsubst for environment variable substitution
+# Install build dependencies (gettext for envsubst)
 RUN apk add --no-cache gettext
 
-# Create nginx templates directory
+# Copy package files first for better layer caching
+COPY package.json package-lock.json ./
+
+# Install dependencies (including devDependencies needed for build)
+# tw-animate-css is in devDependencies but needed for CSS build
+RUN npm ci --only=production=false && \
+    npm cache clean --force
+
+# Copy application source code
+COPY . .
+
+# Remove API routes directory (not needed for static build, handled by nginx proxy)
+# This prevents Astro from requiring an adapter for server-rendered routes
+RUN rm -rf src/pages/api && \
+    # Disable middleware that uses Supabase (not needed for static build)
+    # Create an empty middleware that just passes through
+    echo "import { defineMiddleware } from 'astro:middleware';" > src/middleware/index.ts && \
+    echo "export const onRequest = defineMiddleware((context, next) => next());" >> src/middleware/index.ts && \
+    # Fix tw-animate-css import - use node_modules path for proper resolution
+    # Check if package exists and use appropriate import path
+    if [ -d "node_modules/tw-animate-css" ]; then \
+      if [ -f "node_modules/tw-animate-css/index.css" ]; then \
+        sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/index.css";|' src/styles/global.css; \
+      elif [ -f "node_modules/tw-animate-css/dist/index.css" ]; then \
+        sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/dist/index.css";|' src/styles/global.css; \
+      else \
+        sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
+      fi; \
+    else \
+      sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
+    fi
+
+# Fix bills/[id].astro: change prerender = false to true and add getStaticPaths
+# This allows static build - the page will be handled client-side via React
+RUN if [ -f "src/pages/bills/[id].astro" ]; then \
+    sed -i 's/export const prerender = false;/export const prerender = true;/' "src/pages/bills/[id].astro" && \
+    awk '/export const prerender = true;/ { print; print "export async function getStaticPaths() { return []; }"; next }1' "src/pages/bills/[id].astro" > "src/pages/bills/[id].astro.tmp" && \
+    mv "src/pages/bills/[id].astro.tmp" "src/pages/bills/[id].astro"; \
+    fi
+
+# Build Astro application (outputs to dist/)
+RUN npm run build
+
+# Runtime stage - nginx for serving static files
+FROM nginx:1.27-alpine
+
+# Install gettext for envsubst
+RUN apk add --no-cache gettext
+
+# Create non-root user for nginx
+RUN addgroup -g 1001 -S nginx-user && \
+    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx-user -g nginx nginx-user
+
+# Set working directory
+WORKDIR /app
+
+# Create nginx template directory
 RUN mkdir -p /etc/nginx/templates
 
-# Create nginx configuration template inline (to avoid file copy issues)
-RUN echo 'server {' > /etc/nginx/templates/default.conf.template && \
-    echo '    listen 80;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    server_name _;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    root /usr/share/nginx/html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    index index.html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    gzip on;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    gzip_vary on;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    gzip_min_length 1024;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/json application/javascript;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    add_header X-Frame-Options "SAMEORIGIN" always;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location /api/ {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        rewrite ^/api/(.*)$ /api/v1/$1 break;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_pass ${BACKEND_URL};' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_http_version 1.1;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header Upgrade $http_upgrade;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header Connection '"'"'upgrade'"'"';' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header Host $host;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_set_header X-Forwarded-Proto $scheme;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_cache_bypass $http_upgrade;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_connect_timeout 60s;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_send_timeout 60s;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        proxy_read_timeout 60s;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location / {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        try_files $uri $uri/ /index.html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        expires 1y;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        add_header Cache-Control "public, immutable";' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location /health {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        access_log off;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        return 200 "healthy\\n";' >> /etc/nginx/templates/default.conf.template && \
-    echo '        add_header Content-Type text/plain;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '}' >> /etc/nginx/templates/default.conf.template
+# Configure nginx to run as non-root user
+# Modify main nginx.conf to set user and pid file location
+RUN sed -i 's/^user.*/user nginx-user;/' /etc/nginx/nginx.conf && \
+    sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
 
-# Create entrypoint script inline (to avoid file copy issues)
-RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
-    echo 'set -e' >> /docker-entrypoint.sh && \
-    echo 'BACKEND_URL=${BACKEND_URL:-http://backend:8000}' >> /docker-entrypoint.sh && \
-    echo 'envsubst '"'"'${BACKEND_URL}'"'"' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf' >> /docker-entrypoint.sh && \
-    echo 'exec nginx -g '"'"'daemon off;'"'"'' >> /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh
+# Copy nginx configuration template (server block only)
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
-# Copy built files from builder stage (after copying config files)
+# Copy built static files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Expose port 80
-EXPOSE 80
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Use entrypoint script
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Create healthcheck script (HEALTHCHECK doesn't support env var substitution)
+RUN echo '#!/bin/sh\nPORT=${PORT:-8080}\nwget --spider --quiet "http://localhost:${PORT}/health" || exit 1' > /usr/local/bin/healthcheck.sh && \
+    chmod +x /usr/local/bin/healthcheck.sh
+
+# Set ownership of nginx directories and create necessary directories
+RUN mkdir -p /tmp && \
+    chown -R nginx-user:nginx-user /usr/share/nginx/html && \
+    chown -R nginx-user:nginx-user /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /var/log/nginx && \
+    chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
+    chown -R nginx-user:nginx-user /run && \
+    chown -R nginx-user:nginx-user /tmp && \
+    chown -R nginx-user:nginx-user /etc/nginx/templates
+
+# Switch to non-root user
+USER nginx-user
+
+# Expose port (default 8080, configurable via PORT env var)
+EXPOSE 8080
+
+# Health check (script handles PORT env var)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD /usr/local/bin/healthcheck.sh
+
+# Set environment variables with defaults
+ENV PORT=8080
+ENV BACKEND_URL=http://backend:8000
+
+# Use entrypoint script to configure nginx and start server
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
