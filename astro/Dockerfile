@@ -30,17 +30,19 @@ RUN rm -rf src/pages/api && \
     echo "import { defineMiddleware } from 'astro:middleware';" > src/middleware/index.ts && \
     echo "export const onRequest = defineMiddleware((context, next) => next());" >> src/middleware/index.ts && \
     # Fix tw-animate-css import - use node_modules path for proper resolution
-    # Check if package exists and use appropriate import path
-    if [ -d "node_modules/tw-animate-css" ]; then \
-      if [ -f "node_modules/tw-animate-css/index.css" ]; then \
-        sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/index.css";|' src/styles/global.css; \
-      elif [ -f "node_modules/tw-animate-css/dist/index.css" ]; then \
-        sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/dist/index.css";|' src/styles/global.css; \
+    # Check if global.css exists and package exists, then use appropriate import path
+    if [ -f "src/styles/global.css" ]; then \
+      if [ -d "node_modules/tw-animate-css" ]; then \
+        if [ -f "node_modules/tw-animate-css/index.css" ]; then \
+          sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/index.css";|' src/styles/global.css; \
+        elif [ -f "node_modules/tw-animate-css/dist/index.css" ]; then \
+          sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/dist/index.css";|' src/styles/global.css; \
+        else \
+          sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
+        fi; \
       else \
         sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
       fi; \
-    else \
-      sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
     fi
 
 # Fix bills/[id].astro: change prerender = false to true and add getStaticPaths
