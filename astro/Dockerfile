@@ -61,8 +61,12 @@ RUN addgroup -g 1001 -S nginx-user && \
 WORKDIR /app
 
 # Configure nginx to run as non-root user
+# Remove user directive and set pid file to /tmp (writable by non-root user)
 RUN sed -i '/^user/d' /etc/nginx/nginx.conf && \
-    sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
+    sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
+    sed -i 's|pid /run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
+    # If pid directive doesn't exist, add it
+    grep -q "pid " /etc/nginx/nginx.conf || sed -i '/^http {/a\    pid /tmp/nginx.pid;' /etc/nginx/nginx.conf
 
 # Create nginx template directory
 RUN mkdir -p /etc/nginx/templates
@@ -75,13 +79,14 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Copy built static files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Set ownership
-RUN mkdir -p /tmp && \
+# Set ownership and create necessary directories
+RUN mkdir -p /tmp /run && \
     chown -R nginx-user:nginx-user /usr/share/nginx/html && \
     chown -R nginx-user:nginx-user /var/cache/nginx && \
     chown -R nginx-user:nginx-user /var/log/nginx && \
     chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
     chown -R nginx-user:nginx-user /tmp && \
+    chown -R nginx-user:nginx-user /run && \
     chown -R nginx-user:nginx-user /etc/nginx/templates
 
 # Switch to non-root user
