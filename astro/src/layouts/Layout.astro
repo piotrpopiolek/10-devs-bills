@@ -12,6 +12,20 @@ import { ClientRouter } from 'astro:transitions';
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
 		<title>Bills - Zarządzanie wydatkami</title>
+		{/* Fix for Railway: set base URL without port */}
+		<script is:inline define:vars={{ siteUrl: Astro.site?.href || '' }}>
+			// Store correct base URL without port for Railway
+			(function() {
+				const currentOrigin = window.location.origin;
+				// If current origin has port 8080 or 80, remove it
+				if (currentOrigin.includes(':8080') || currentOrigin.includes(':80')) {
+					const originWithoutPort = currentOrigin.split(':').slice(0, 2).join(':');
+					window.__BASE_URL__ = siteUrl || originWithoutPort;
+				} else {
+					window.__BASE_URL__ = siteUrl || currentOrigin;
+				}
+			})();
+		</script>
 		<ClientRouter />
 	</head>
 	<body>

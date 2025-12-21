@@ -63,12 +63,18 @@ RUN if [ -f "src/pages/bills/[id].astro" ]; then \
     fi
 
 # Build Astro application (outputs to dist/)
+# Set PUBLIC_SITE_URL if provided (for Railway deployment)
+# This ensures Astro generates correct URLs without port
+# Railway should set this as environment variable
+ARG PUBLIC_SITE_URL
+ENV PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
+
 # Verify we're in the right directory and package.json exists
 RUN pwd && \
     ls -la package.json && \
     echo "Checking package.json scripts..." && \
     cat package.json | grep -A 5 '"scripts"' && \
-    echo "Running build..." && \
+    echo "Running build with PUBLIC_SITE_URL=${PUBLIC_SITE_URL}..." && \
     npm run build
 
 # Runtime stage - nginx for serving static files

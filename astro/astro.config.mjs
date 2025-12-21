@@ -9,6 +9,11 @@ import tailwindcss from '@tailwindcss/vite';
 // API routes are handled by nginx proxy to backend
 export default defineConfig({
   output: 'static',
+  // Base path - empty for root domain, Railway handles routing
+  base: '/',
+  // Site URL - Railway will set this via environment variable
+  // For production, this should be your Railway domain without port
+  site: process.env.PUBLIC_SITE_URL,
   integrations: [react()],
 
   vite: {
