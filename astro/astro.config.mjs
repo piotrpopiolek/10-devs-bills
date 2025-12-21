@@ -13,7 +13,8 @@ export default defineConfig({
   base: '/',
   // Site URL - Railway will set this via environment variable
   // For production, this should be your Railway domain without port
-  site: process.env.PUBLIC_SITE_URL,
+  // Only set site if PUBLIC_SITE_URL is provided (Astro requires valid URL or undefined)
+  ...(process.env.PUBLIC_SITE_URL && { site: process.env.PUBLIC_SITE_URL }),
   integrations: [react()],
 
   vite: {
