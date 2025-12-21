@@ -4,7 +4,12 @@ set -e
 # Set default values if not provided
 # For Railway: use private hostname with protocol and port
 # Find service name in Railway: Backend service → Settings → Private Networking
-# Example: http://bills:8000 or http://bills.railway.internal:8000
+# 
+# Supported formats:
+# - Short: http://bills:8000 (recommended, uses Railway service discovery)
+# - Full: http://bills.railway.internal:8000 (if short format doesn't resolve)
+#
+# If DNS resolution fails, try the full .railway.internal format
 # Nginx will automatically handle protocol removal and port detection
 BACKEND_URL=${BACKEND_URL:-http://backend:8000}
 PORT=${PORT:-8080}

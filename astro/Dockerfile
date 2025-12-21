@@ -95,10 +95,12 @@ RUN mkdir -p /etc/nginx/templates
 
 # Configure nginx to run as non-root user
 # Remove user directive (not needed when running as non-root) and set pid file location
-# Add resolver to http block for dynamic DNS resolution (Docker's internal DNS)
+# Add resolver to http block for dynamic DNS resolution
+# Railway uses system DNS, so we use Google DNS (8.8.8.8) as primary and Cloudflare (1.1.1.1) as fallback
+# Railway's private networking should work with these resolvers
 RUN sed -i '/^user/d' /etc/nginx/nginx.conf && \
     sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
-    sed -i '/^http {/a\    resolver 127.0.0.11 valid=30s;' /etc/nginx/nginx.conf
+    sed -i '/^http {/a\    resolver 8.8.8.8 1.1.1.1 valid=300s ipv6=off;' /etc/nginx/nginx.conf
 
 # Copy nginx configuration template and entrypoint script from builder stage
 # (These files are copied in builder stage with COPY . ., so they're available there)
