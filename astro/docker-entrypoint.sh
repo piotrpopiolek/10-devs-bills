@@ -33,12 +33,22 @@ DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2
 # Railway supports both IPv4 and IPv6 in new environments (after Oct 16, 2025)
 # Use awk to modify and write directly, then copy over original file
 if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
+    echo "Adding DNS resolver to nginx.conf: ${DNS_RESOLVER}"
     # Enable IPv6 support for Railway's dual-stack networking
     # Escape curly braces in awk pattern - use /^http \{/ instead of /^http {/
     awk -v resolver="${DNS_RESOLVER}" '/^http \{/ { print; print "    resolver " resolver " valid=300s ipv6=on;"; next }1' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
-    # Copy temp file over original (cp preserves permissions better than mv)
-    cp /tmp/nginx.conf.tmp /etc/nginx/nginx.conf && \
-    rm -f /tmp/nginx.conf.tmp
+    # Force copy temp file over original (cp -f will overwrite existing file)
+    cp -f /tmp/nginx.conf.tmp /etc/nginx/nginx.conf && \
+    rm -f /tmp/nginx.conf.tmp && \
+    echo "DNS resolver added successfully"
+    # Verify resolver was added
+    if grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
+        echo "✓ Resolver verified in nginx.conf"
+    else
+        echo "✗ ERROR: Resolver was not added to nginx.conf!"
+    fi
+else
+    echo "DNS resolver already exists in nginx.conf"
 fi
 
 # Export variables for envsubst (envsubst only substitutes exported variables)
