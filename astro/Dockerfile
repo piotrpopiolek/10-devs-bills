@@ -87,7 +87,9 @@ RUN mkdir -p /tmp /run && \
     chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
     chown -R nginx-user:nginx-user /tmp && \
     chown -R nginx-user:nginx-user /run && \
-    chown -R nginx-user:nginx-user /etc/nginx/templates
+    chown -R nginx-user:nginx-user /etc/nginx/templates && \
+    chown nginx-user:nginx-user /etc/nginx/nginx.conf && \
+    chmod 664 /etc/nginx/nginx.conf
 
 # Switch to non-root user
 USER nginx-user
@@ -101,6 +103,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Set environment variables
 ENV PORT=8080
+ENV BACKEND_URL=http://backend:8000
 
 # Use entrypoint script
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
