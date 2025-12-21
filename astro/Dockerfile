@@ -113,6 +113,7 @@ RUN echo '#!/bin/sh\nPORT=${PORT:-8080}\nwget --spider --quiet "http://localhost
     chmod +x /usr/local/bin/healthcheck.sh
 
 # Set ownership of nginx directories and create necessary directories
+# Also allow nginx-user to modify nginx.conf for runtime DNS resolver configuration
 RUN mkdir -p /tmp && \
     chown -R nginx-user:nginx-user /usr/share/nginx/html && \
     chown -R nginx-user:nginx-user /var/cache/nginx && \
@@ -120,7 +121,8 @@ RUN mkdir -p /tmp && \
     chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
     chown -R nginx-user:nginx-user /run && \
     chown -R nginx-user:nginx-user /tmp && \
-    chown -R nginx-user:nginx-user /etc/nginx/templates
+    chown -R nginx-user:nginx-user /etc/nginx/templates && \
+    chown nginx-user:nginx-user /etc/nginx/nginx.conf
 
 # Switch to non-root user
 USER nginx-user

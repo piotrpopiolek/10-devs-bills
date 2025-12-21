@@ -20,8 +20,10 @@ DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2
 
 # Add resolver to nginx.conf http block at runtime
 # This must be done before nginx starts, and resolver must be in http block (not server block)
+# Write to temp file first, then move it (avoids permission issues with sed -i)
 if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
-    sed -i "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=off;" /etc/nginx/nginx.conf
+    sed "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=off;" /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
+    mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 fi
 
 # Export variables for envsubst (envsubst only substitutes exported variables)
