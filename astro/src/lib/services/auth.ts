@@ -8,15 +8,24 @@ export interface TokenResponse {
   user: User;
 }
 
+// Helper to determine if we should use relative URLs (production) or absolute URLs (development)
+function shouldUseRelativeUrl(): boolean {
+  const apiUrl = import.meta.env.PUBLIC_API_URL;
+  // Use relative URL if:
+  // 1. PUBLIC_API_URL is not set (production on Railway)
+  // 2. PUBLIC_API_URL contains localhost (development default, but we want relative in production)
+  return !apiUrl || apiUrl.includes('localhost');
+}
+
 const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 export const authService = {
   async verifyMagicLink(token: string): Promise<TokenResponse> {
     // Use relative URL for production (nginx proxies /api/* to backend)
-    // Fallback to absolute URL for development
-    const apiPath = import.meta.env.PUBLIC_API_URL 
-      ? `${API_URL}/auth/verify?token=${token}`
-      : `/api/auth/verify?token=${token}`;
+    // Use absolute URL only if PUBLIC_API_URL is explicitly set and not localhost
+    const apiPath = shouldUseRelativeUrl()
+      ? `/api/auth/verify?token=${token}`
+      : `${API_URL}/auth/verify?token=${token}`;
     
     try {
       const response = await fetch(apiPath, {
@@ -60,10 +69,10 @@ export const authService = {
     }
 
     // Use relative URL for production (nginx proxies /api/* to backend)
-    // Fallback to absolute URL for development
-    const refreshPath = import.meta.env.PUBLIC_API_URL 
-      ? `${API_URL}/auth/refresh`
-      : `/api/auth/refresh`;
+    // Use absolute URL only if PUBLIC_API_URL is explicitly set and not localhost
+    const refreshPath = shouldUseRelativeUrl()
+      ? `/api/auth/refresh`
+      : `${API_URL}/auth/refresh`;
     
     const response = await fetch(refreshPath, {
       method: 'POST',
