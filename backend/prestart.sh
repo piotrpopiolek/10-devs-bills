@@ -45,31 +45,7 @@ echo ""
 # Supabase CLI expects postgresql:// format
 DB_URL="${DATABASE_URL//postgresql+psycopg2:/postgresql:}"
 
-# IMPORTANT: Supabase CLI uses prepared statements which are not compatible
-# with Connection Pooler (port 6543) in transaction mode.
-# Convert pooler URL to direct database connection (port 5432) for migrations.
-if [[ "$DB_URL" == *":6543/"* ]] || [[ "$DB_URL" == *"pooler.supabase.com"* ]]; then
-    echo "WARNING: DATABASE_URL uses Connection Pooler (port 6543)"
-    echo "Converting to direct database connection (port 5432) for migrations..."
-    echo ""
-    
-    # Extract project reference from pooler URL
-    # Format: postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
-    # Convert to: postgresql://postgres.[PROJECT_REF]:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
-    
-    # Extract project ref from user part (postgres.[PROJECT_REF])
-    if [[ "$DB_URL" =~ postgres\.([^:]+): ]]; then
-        PROJECT_REF="${BASH_REMATCH[1]}"
-        # Replace pooler hostname and port with direct connection
-        DB_URL=$(echo "$DB_URL" | sed "s|@[^@]*pooler\.supabase\.com:6543|@db.$PROJECT_REF.supabase.co:5432|" | sed 's|:6543/|:5432/|')
-        echo "Converted to direct connection using project ref: $PROJECT_REF"
-    else
-        # Fallback: just change port from 6543 to 5432
-        DB_URL=$(echo "$DB_URL" | sed 's|:6543/|:5432/|')
-        echo "Converted port from 6543 to 5432 (host unchanged)"
-    fi
-    echo ""
-fi
+echo "Converted DATABASE_URL: $DB_URL"
 
 # Change to supabase directory for proper context
 cd /supabase || {
