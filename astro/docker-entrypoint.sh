@@ -24,11 +24,14 @@ DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2
 # Add resolver to nginx.conf http block at runtime
 # This must be done before nginx starts, and resolver must be in http block (not server block)
 # Railway supports both IPv4 and IPv6 in new environments (after Oct 16, 2025)
-# Write to temp file first, then move it (avoids permission issues with sed -i)
+# Use awk to modify and write directly, then copy over original file
 if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
     # Enable IPv6 support for Railway's dual-stack networking
-    sed "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=on;" /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
-    mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
+    # Use awk to insert resolver line after "http {" and write to temp file
+    awk -v resolver="${DNS_RESOLVER}" '/^http {/ { print; print "    resolver " resolver " valid=300s ipv6=on;"; next }1' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
+    # Copy temp file over original (cp preserves permissions better than mv)
+    cp /tmp/nginx.conf.tmp /etc/nginx/nginx.conf && \
+    rm -f /tmp/nginx.conf.tmp
 fi
 
 # Export variables for envsubst (envsubst only substitutes exported variables)

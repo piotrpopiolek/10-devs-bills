@@ -122,7 +122,9 @@ RUN mkdir -p /tmp && \
     chown -R nginx-user:nginx-user /run && \
     chown -R nginx-user:nginx-user /tmp && \
     chown -R nginx-user:nginx-user /etc/nginx/templates && \
-    chown nginx-user:nginx-user /etc/nginx/nginx.conf
+    chown nginx-user:nginx-user /etc/nginx/nginx.conf && \
+    chmod 664 /etc/nginx/nginx.conf && \
+    chmod 775 /etc/nginx
 
 # Switch to non-root user
 USER nginx-user
