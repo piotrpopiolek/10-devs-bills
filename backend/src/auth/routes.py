@@ -213,11 +213,13 @@ async def refresh_tokens(data: TokenRefreshRequest, service: ServiceDependency) 
 # --- ADMIN/DEBUGGING ENDPOINTS FOR MAGIC LINK CRUD ---
 
 @router.get("/admin/magic-links", response_model=MagicLinkListResponse, status_code=status.HTTP_200_OK, summary="List all magic links (Admin)", description="Get paginated list of all magic links. For admin/debugging purposes only.", tags=["admin"])
-async def get_magic_links(service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")) -> MagicLinkListResponse:
+async def get_magic_links(user: CurrentUser, service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")) -> MagicLinkListResponse:
     """
     List all magic links with pagination.
+    Requires authentication.
     
     Args:
+        user: Current authenticated user (from JWT token)
         service: AuthService dependency
         skip: Number of items to skip
         limit: Max number of items to return
@@ -228,12 +230,14 @@ async def get_magic_links(service: ServiceDependency, skip: int = Query(0, ge=0,
     return await service.get_all(skip=skip, limit=limit)
 
 @router.get("/admin/magic-links/{magic_link_id}", response_model=MagicLinkInternalResponse, status_code=status.HTTP_200_OK, summary="Get magic link by ID (Admin)", description="Get detailed information about a specific magic link. For admin/debugging purposes only.", tags=["admin"])
-async def get_magic_link(magic_link_id: int, service: ServiceDependency) -> MagicLinkInternalResponse:
+async def get_magic_link(magic_link_id: int, user: CurrentUser, service: ServiceDependency) -> MagicLinkInternalResponse:
     """
     Get magic link by ID.
+    Requires authentication.
     
     Args:
         magic_link_id: MagicLink ID
+        user: Current authenticated user (from JWT token)
         service: AuthService dependency
         
     Returns:
@@ -245,13 +249,15 @@ async def get_magic_link(magic_link_id: int, service: ServiceDependency) -> Magi
     return await service.get_by_id(magic_link_id)
 
 @router.patch("/admin/magic-links/{magic_link_id}", response_model=MagicLinkInternalResponse, status_code=status.HTTP_200_OK, summary="Update magic link (Admin)", description="Update magic link fields. For admin/debugging purposes only.", tags=["admin"])
-async def update_magic_link(magic_link_id: int,data: MagicLinkUpdate,service: ServiceDependency):
+async def update_magic_link(magic_link_id: int, data: MagicLinkUpdate, user: CurrentUser, service: ServiceDependency):
     """
     Update magic link record.
+    Requires authentication.
     
     Args:
         magic_link_id: MagicLink ID to update
         data: Fields to update
+        user: Current authenticated user (from JWT token)
         service: AuthService dependency
         
     Returns:
@@ -263,12 +269,14 @@ async def update_magic_link(magic_link_id: int,data: MagicLinkUpdate,service: Se
     return await service.update(magic_link_id, data)
 
 @router.delete("/admin/magic-links/{magic_link_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete magic link (Admin)", description="Delete a magic link record. For admin/debugging purposes only.", tags=["admin"])
-async def delete_magic_link(magic_link_id: int, service: ServiceDependency) -> None:
+async def delete_magic_link(magic_link_id: int, user: CurrentUser, service: ServiceDependency) -> None:
     """
     Delete magic link record.
+    Requires authentication.
     
     Args:
         magic_link_id: MagicLink ID to delete
+        user: Current authenticated user (from JWT token)
         service: AuthService dependency
         
     Raises:

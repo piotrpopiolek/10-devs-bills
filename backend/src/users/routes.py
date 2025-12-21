@@ -60,26 +60,46 @@ async def get_current_user_profile(
     )
 
 @router.get("/", response_model=UserListResponse, status_code=status.HTTP_200_OK, summary="List all users")
-async def get_users(service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
+async def get_users(user: CurrentUser, service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
+    """
+    List all users.
+    Requires authentication.
+    """
     return await service.get_all(skip=skip, limit=limit)
 
 @router.get("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Get user by ID")
-async def get_user(user_id: int, service: ServiceDependency):
+async def get_user(user_id: int, user: CurrentUser, service: ServiceDependency):
+    """
+    Get user by ID.
+    Requires authentication.
+    """
     return await service.get_by_id(user_id)
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create a new user")
-async def create_user(data: UserCreate, service: ServiceDependency):
+async def create_user(data: UserCreate, user: CurrentUser, service: ServiceDependency):
+    """
+    Create a new user.
+    Requires authentication.
+    """
     return await service.create(data)
 
 
 @router.patch("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Update a user")
-async def update_user(user_id: int, data: UserUpdate, service: ServiceDependency):
+async def update_user(user_id: int, data: UserUpdate, user: CurrentUser, service: ServiceDependency):
+    """
+    Update a user.
+    Requires authentication.
+    """
     return await service.update(user_id, data)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a user")
-async def delete_user(user_id: int, service: ServiceDependency):
+async def delete_user(user_id: int, user: CurrentUser, service: ServiceDependency):
+    """
+    Delete a user.
+    Requires authentication.
+    """
     await service.delete(user_id)
     return None
 
