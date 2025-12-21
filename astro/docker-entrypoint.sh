@@ -14,6 +14,13 @@ set -e
 #   - Full: http://bills.railway.internal:8000
 #
 # Railway's DNS is configured in /etc/resolv.conf and will be used automatically
+# Check if BACKEND_URL is empty or contains unresolved reference variables
+if [ -z "${BACKEND_URL}" ] || echo "${BACKEND_URL}" | grep -q '\${{'; then
+    echo "WARNING: BACKEND_URL is empty or contains unresolved reference variables!"
+    echo "BACKEND_URL value: '${BACKEND_URL}'"
+    echo "Falling back to default: http://backend:8000"
+    BACKEND_URL="http://backend:8000"
+fi
 BACKEND_URL=${BACKEND_URL:-http://backend:8000}
 PORT=${PORT:-8080}
 
@@ -27,8 +34,8 @@ DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2
 # Use awk to modify and write directly, then copy over original file
 if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
     # Enable IPv6 support for Railway's dual-stack networking
-    # Use awk to insert resolver line after "http {" and write to temp file
-    awk -v resolver="${DNS_RESOLVER}" '/^http {/ { print; print "    resolver " resolver " valid=300s ipv6=on;"; next }1' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
+    # Escape curly braces in awk pattern - use /^http \{/ instead of /^http {/
+    awk -v resolver="${DNS_RESOLVER}" '/^http \{/ { print; print "    resolver " resolver " valid=300s ipv6=on;"; next }1' /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
     # Copy temp file over original (cp preserves permissions better than mv)
     cp /tmp/nginx.conf.tmp /etc/nginx/nginx.conf && \
     rm -f /tmp/nginx.conf.tmp
