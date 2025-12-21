@@ -12,7 +12,13 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export const authService = {
   async verifyMagicLink(token: string): Promise<TokenResponse> {
-    const response = await fetch(`${API_URL}/auth/verify?token=${token}`, {
+    // Use relative URL for production (nginx proxies /api/* to backend)
+    // Fallback to absolute URL for development
+    const apiPath = import.meta.env.PUBLIC_API_URL 
+      ? `${API_URL}/auth/verify?token=${token}`
+      : `/api/auth/verify?token=${token}`;
+    
+    const response = await fetch(apiPath, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -37,7 +43,13 @@ export const authService = {
       throw new Error('No refresh token available');
     }
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
+    // Use relative URL for production (nginx proxies /api/* to backend)
+    // Fallback to absolute URL for development
+    const refreshPath = import.meta.env.PUBLIC_API_URL 
+      ? `${API_URL}/auth/refresh`
+      : `/api/auth/refresh`;
+    
+    const response = await fetch(refreshPath, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
