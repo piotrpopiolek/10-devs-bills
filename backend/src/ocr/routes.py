@@ -2,7 +2,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, UploadFile
-import google.genai as genai
+import google.generativeai as genai
 
 from src.deps import CurrentUser
 from src.middleware.rate_limit import check_ocr_rate_limit
