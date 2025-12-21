@@ -7,12 +7,41 @@ WORKDIR /app
 # Copy package files for dependency caching
 COPY astro/package.json astro/package-lock.json ./
 
-# Install dependencies
-RUN npm ci && \
+# Install dependencies (including devDependencies needed for build)
+RUN npm ci --only=production=false && \
     npm cache clean --force
 
 # Copy application source code
 COPY astro/ .
+
+# Prepare for static build
+# Remove API routes (not needed for static build)
+RUN rm -rf src/pages/api && \
+    # Disable middleware that uses Supabase (not needed for static build)
+    mkdir -p src/middleware && \
+    echo "import { defineMiddleware } from 'astro:middleware';" > src/middleware/index.ts && \
+    echo "export const onRequest = defineMiddleware((context, next) => next());" >> src/middleware/index.ts && \
+    # Fix tw-animate-css import
+    if [ -f "src/styles/global.css" ]; then \
+      if [ -d "node_modules/tw-animate-css" ]; then \
+        if [ -f "node_modules/tw-animate-css/index.css" ]; then \
+          sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/index.css";|' src/styles/global.css; \
+        elif [ -f "node_modules/tw-animate-css/dist/index.css" ]; then \
+          sed -i 's|@import "tw-animate-css";|@import "../node_modules/tw-animate-css/dist/index.css";|' src/styles/global.css; \
+        else \
+          sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
+        fi; \
+      else \
+        sed -i 's|@import "tw-animate-css";|/* @import "tw-animate-css"; */|' src/styles/global.css; \
+      fi; \
+    fi
+
+# Fix bills/[id].astro if it exists (change prerender to true for static build)
+RUN if [ -f "src/pages/bills/[id].astro" ]; then \
+      sed -i 's/export const prerender = false;/export const prerender = true;/' "src/pages/bills/[id].astro" && \
+      awk '/export const prerender = true;/ { print; print "export async function getStaticPaths() { return []; }"; next }1' "src/pages/bills/[id].astro" > "src/pages/bills/[id].astro.tmp" && \
+      mv "src/pages/bills/[id].astro.tmp" "src/pages/bills/[id].astro"; \
+    fi
 
 # Build Astro application
 ARG PUBLIC_SITE_URL
