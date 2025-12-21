@@ -8,24 +8,11 @@ export interface TokenResponse {
   user: User;
 }
 
-// Helper to determine if we should use relative URLs (production) or absolute URLs (development)
-function shouldUseRelativeUrl(): boolean {
-  const apiUrl = import.meta.env.PUBLIC_API_URL;
-  // Use relative URL if:
-  // 1. PUBLIC_API_URL is not set (production on Railway)
-  // 2. PUBLIC_API_URL contains localhost (development default, but we want relative in production)
-  return !apiUrl || apiUrl.includes('localhost');
-}
-
-const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-
 export const authService = {
   async verifyMagicLink(token: string): Promise<TokenResponse> {
-    // Use relative URL for production (nginx proxies /api/* to backend)
-    // Use absolute URL only if PUBLIC_API_URL is explicitly set and not localhost
-    const apiPath = shouldUseRelativeUrl()
-      ? `/api/auth/verify?token=${token}`
-      : `${API_URL}/auth/verify?token=${token}`;
+    // Always use relative URL - nginx proxies /api/* to backend in production
+    // In development, Vite dev server can proxy /api/* to backend
+    const apiPath = `/api/auth/verify?token=${token}`;
     
     try {
       const response = await fetch(apiPath, {
@@ -68,11 +55,9 @@ export const authService = {
       throw new Error('No refresh token available');
     }
 
-    // Use relative URL for production (nginx proxies /api/* to backend)
-    // Use absolute URL only if PUBLIC_API_URL is explicitly set and not localhost
-    const refreshPath = shouldUseRelativeUrl()
-      ? `/api/auth/refresh`
-      : `${API_URL}/auth/refresh`;
+    // Always use relative URL - nginx proxies /api/* to backend in production
+    // In development, Vite dev server can proxy /api/* to backend
+    const refreshPath = `/api/auth/refresh`;
     
     const response = await fetch(refreshPath, {
       method: 'POST',
