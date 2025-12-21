@@ -3,13 +3,16 @@ set -e
 
 # Set default values if not provided
 # For Railway: use private hostname with protocol and port
-# Find service name in Railway: Backend service → Settings → Private Networking
 # 
-# Supported formats:
-# - Short: http://bills:8000 (RECOMMENDED - uses Railway service discovery)
-# - Full: http://bills.railway.internal:8000 (may not resolve with public DNS)
+# RECOMMENDED: Use Railway Reference Variables in Railway Dashboard:
+#   BACKEND_URL=http://${{bills.RAILWAY_PRIVATE_DOMAIN}}:${{bills.PORT}}
+#   (Replace 'bills' with your backend service name)
+#   Note: PORT must be set as a service variable in backend service
 #
-# IMPORTANT: Use the short format (just service name) for Railway private networking
+# ALTERNATIVE: Hardcoded values (if reference variables don't work):
+#   - Short: http://bills:8000 (uses Railway service discovery)
+#   - Full: http://bills.railway.internal:8000
+#
 # Railway's DNS is configured in /etc/resolv.conf and will be used automatically
 BACKEND_URL=${BACKEND_URL:-http://backend:8000}
 PORT=${PORT:-8080}
@@ -20,9 +23,11 @@ DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2
 
 # Add resolver to nginx.conf http block at runtime
 # This must be done before nginx starts, and resolver must be in http block (not server block)
+# Railway supports both IPv4 and IPv6 in new environments (after Oct 16, 2025)
 # Write to temp file first, then move it (avoids permission issues with sed -i)
 if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
-    sed "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=off;" /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
+    # Enable IPv6 support for Railway's dual-stack networking
+    sed "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=on;" /etc/nginx/nginx.conf > /tmp/nginx.conf.tmp && \
     mv /tmp/nginx.conf.tmp /etc/nginx/nginx.conf
 fi
 
