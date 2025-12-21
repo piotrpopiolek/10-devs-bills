@@ -35,9 +35,21 @@ fi
 export BACKEND_URL
 export PORT
 
+# Log configuration for debugging
+echo "=== Nginx Configuration ==="
+echo "PORT: ${PORT}"
+echo "BACKEND_URL: ${BACKEND_URL}"
+echo "DNS_RESOLVER: ${DNS_RESOLVER}"
+echo "=========================="
+
 # Substitute environment variables in nginx config template
 # envsubst will replace ${PORT} and ${BACKEND_URL} with actual values
 envsubst '${BACKEND_URL} ${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+
+# Verify the generated config (show backend hostname extraction)
+echo "=== Generated Nginx Config (backend hostname) ==="
+grep -A 5 "location /api/" /etc/nginx/conf.d/default.conf | head -10 || true
+echo "=================================================="
 
 # Start nginx
 exec nginx -g 'daemon off;'
