@@ -95,11 +95,9 @@ RUN mkdir -p /etc/nginx/templates
 
 # Configure nginx to run as non-root user
 # Remove user directive (not needed when running as non-root) and set pid file location
-# DNS resolver will be set dynamically at runtime from /etc/resolv.conf (Railway configures this)
-# This allows Railway's private networking DNS to work correctly
+# DNS resolver will be set dynamically at runtime in entrypoint script
 RUN sed -i '/^user/d' /etc/nginx/nginx.conf && \
-    sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
-    sed -i '/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=off;' /etc/nginx/nginx.conf
+    sed -i 's|pid /var/run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
 
 # Copy nginx configuration template and entrypoint script from builder stage
 # (These files are copied in builder stage with COPY . ., so they're available there)

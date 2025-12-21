@@ -18,14 +18,19 @@ PORT=${PORT:-8080}
 # Use the first nameserver found, or fallback to 8.8.8.8
 DNS_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}' || echo "8.8.8.8")
 
+# Add resolver to nginx.conf http block at runtime
+# This must be done before nginx starts, and resolver must be in http block (not server block)
+if ! grep -q "resolver.*valid" /etc/nginx/nginx.conf; then
+    sed -i "/^http {/a\    resolver ${DNS_RESOLVER} valid=300s ipv6=off;" /etc/nginx/nginx.conf
+fi
+
 # Export variables for envsubst (envsubst only substitutes exported variables)
 export BACKEND_URL
 export PORT
-export DNS_RESOLVER
 
 # Substitute environment variables in nginx config template
-# envsubst will replace ${PORT}, ${BACKEND_URL}, and ${DNS_RESOLVER} with actual values
-envsubst '${BACKEND_URL} ${PORT} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+# envsubst will replace ${PORT} and ${BACKEND_URL} with actual values
+envsubst '${BACKEND_URL} ${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Start nginx
 exec nginx -g 'daemon off;'
