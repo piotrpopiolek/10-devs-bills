@@ -11,13 +11,23 @@ export BACKEND_URL
 
 # Extract DNS resolver from /etc/resolv.conf (Railway configures this)
 # Use the first nameserver found, or fallback to 8.8.8.8
-RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}' || echo "8.8.8.8")
+RAW_RESOLVER=$(grep -E '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}' || echo "8.8.8.8")
+
+# Format IPv6 addresses with square brackets for nginx (e.g., fd12::10 -> [fd12::10])
+# Check if it's an IPv6 address (contains colons but no dots)
+if echo "${RAW_RESOLVER}" | grep -qE '^[0-9a-fA-F:]+$' && ! echo "${RAW_RESOLVER}" | grep -qE '\.'; then
+    # IPv6 address - wrap in square brackets
+    RESOLVER="[${RAW_RESOLVER}]"
+else
+    # IPv4 address - use as is
+    RESOLVER="${RAW_RESOLVER}"
+fi
 
 # Log configuration for debugging
 echo "=== Nginx Configuration ==="
 echo "PORT: ${PORT}"
 echo "BACKEND_URL: ${BACKEND_URL}"
-echo "DNS_RESOLVER: ${RESOLVER}"
+echo "DNS_RESOLVER: ${RESOLVER} (raw: ${RAW_RESOLVER})"
 echo "=========================="
 
 # Substitute environment variables in nginx config template
