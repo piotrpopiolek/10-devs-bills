@@ -33,13 +33,23 @@ echo "=========================="
 # Substitute environment variables in nginx config template
 envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
-# Update resolver in generated config (replace 8.8.8.8 with actual resolver)
-sed -i "s|resolver 8.8.8.8|resolver ${RESOLVER}|" /etc/nginx/conf.d/default.conf
+# Update resolver in generated config (replace 8.8.8.8 with actual resolver, keep ipv6=on)
+sed -i "s|resolver 8.8.8.8 valid=300s ipv6=on;|resolver ${RESOLVER} valid=300s ipv6=on;|" /etc/nginx/conf.d/default.conf
 
 # Verify the generated config
 echo "=== Generated Nginx Config (proxy section) ==="
 grep -A 5 "location /api/" /etc/nginx/conf.d/default.conf || true
+echo "=== Generated Nginx Config (resolver) ==="
+grep "resolver" /etc/nginx/conf.d/default.conf || true
 echo "=============================================="
+
+# Test DNS resolution (for debugging)
+echo "=== Testing DNS Resolution ==="
+echo "Testing: bills"
+nslookup bills ${RAW_RESOLVER} 2>&1 || echo "nslookup failed or not available"
+echo "Testing: bills.railway.internal"
+nslookup bills.railway.internal ${RAW_RESOLVER} 2>&1 || echo "nslookup failed or not available"
+echo "============================="
 
 # Start nginx (pid file is configured in nginx.conf to use /tmp/nginx.pid)
 exec nginx -g 'daemon off;'
