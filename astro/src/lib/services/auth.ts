@@ -18,19 +18,35 @@ export const authService = {
       ? `${API_URL}/auth/verify?token=${token}`
       : `/api/auth/verify?token=${token}`;
     
-    const response = await fetch(apiPath, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await fetch(apiPath, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to verify magic link');
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: Failed to verify magic link`;
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || error.message || errorMessage;
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    } catch (error) {
+      // Re-throw if it's already an Error with a message
+      if (error instanceof Error) {
+        throw error;
+      }
+      // Handle network errors (fetch failures)
+      throw new Error('Błąd połączenia z serwerem. Sprawdź połączenie internetowe.');
     }
-
-    return response.json();
   },
 
   async refreshToken(): Promise<TokenResponse> {

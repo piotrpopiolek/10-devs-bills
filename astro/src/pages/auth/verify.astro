@@ -30,7 +30,9 @@ import Layout from '../../layouts/Layout.astro';
     }
 
     try {
+      console.log('Verifying magic link with token:', token.substring(0, 10) + '...');
       const data = await authService.verifyMagicLink(token);
+      console.log('Verification successful, setting session');
       authService.setSession(data);
       
       if (statusMessage) statusMessage.innerText = "Zalogowano pomyślnie! Przekierowywanie...";
@@ -41,8 +43,23 @@ import Layout from '../../layouts/Layout.astro';
       }, 1000);
       
     } catch (error) {
-      console.error(error);
-      if (statusMessage) statusMessage.innerText = "Błąd logowania: " + (error instanceof Error ? error.message : "Nieznany błąd");
+      console.error('Verification error:', error);
+      let errorMessage = "Nieznany błąd";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // If it's a fetch error, try to get more details
+        if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+          errorMessage = "Błąd połączenia z serwerem. Sprawdź połączenie internetowe.";
+        }
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
+      }
+      
+      if (statusMessage) {
+        statusMessage.innerText = "Błąd logowania: " + errorMessage;
+        statusMessage.className = "text-gray-600 dark:text-gray-300 text-red-600 dark:text-red-400";
+      }
       if (loader) loader.style.display = 'none';
     }
   }
