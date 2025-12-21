@@ -11,6 +11,7 @@ WORKDIR /app
 
 # Install system dependencies required for PaddleOCR and OpenCV
 # Note: libgl1-mesa-glx is replaced by libgl1 in Debian 12+
+# Also install postgresql-client for psql (fallback for migrations if Supabase CLI fails)
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
@@ -19,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Supabase CLI for running migrations
