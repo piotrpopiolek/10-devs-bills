@@ -14,7 +14,7 @@ const ProductCandidatesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export const GET: APIRoute = async ({ request }) => {
+export const GET: APIRoute = async ({ request, cookies }) => {
   const url = new URL(request.url);
   
   // Parse and validate query parameters using Zod
@@ -42,6 +42,23 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const { search, status, category_id, skip, limit } = parseResult.data;
+  
+  // Get access token from cookies or Authorization header
+  const accessToken = cookies.get('access_token')?.value || 
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+
+  if (!accessToken) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Unauthorized - missing access token',
+      }),
+      {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
   
   const queryParams = new URLSearchParams();
   queryParams.append('skip', skip.toString());
@@ -73,6 +90,7 @@ export const GET: APIRoute = async ({ request }) => {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
       }
     });
 

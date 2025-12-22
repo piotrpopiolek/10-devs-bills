@@ -1,0 +1,109 @@
+import type { APIRoute } from 'astro';
+import type { TokenResponse } from '@/lib/services/auth';
+
+// Mark this route as dynamic (not prerendered)
+export const prerender = false;
+
+export const GET: APIRoute = async ({ request }) => {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+
+  if (!token) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Missing token parameter',
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  // Use environment variable for backend URL
+  const BACKEND_URL = import.meta.env.BACKEND_URL;
+  
+  if (!BACKEND_URL) {
+    console.error('BACKEND_URL is not set in environment variables');
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Backend URL not configured',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  // Ensure BACKEND_URL includes /api/v1 prefix
+  const baseUrl = BACKEND_URL.endsWith('/api/v1')
+    ? BACKEND_URL
+    : BACKEND_URL.endsWith('/api/v1/')
+    ? BACKEND_URL.slice(0, -1)
+    : `${BACKEND_URL}/api/v1`;
+
+  const API_URL = `${baseUrl}/auth/verify?token=${encodeURIComponent(token)}`;
+
+  console.log(`Proxying request to: ${API_URL}`);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Upstream API error: ${response.status} ${errorText}`);
+      
+      // Try to parse error as JSON
+      let errorMessage = `Upstream API error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorJson.message || errorMessage;
+      } catch {
+        // If not JSON, use the text as is
+        errorMessage = errorText || errorMessage;
+      }
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: errorMessage,
+        }),
+        { 
+          status: response.status,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Backend returns TokenResponse directly, no need to wrap
+    const data = (await response.json()) as TokenResponse;
+
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown proxy error',
+      }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+};
+
