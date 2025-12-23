@@ -27,7 +27,9 @@ fi
 BACKEND_HOST=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||')
 
 # Extract backend hostname for Host header (before any URL modifications)
+# This will be used in nginx proxy_set_header Host
 BACKEND_HOSTNAME=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||' | sed -E 's|/.*$||')
+# Always export BACKEND_HOSTNAME (nginx requires it)
 export BACKEND_HOSTNAME
 
 # Check if BACKEND_URL is a public Railway domain (should use HTTPS, not resolve to IP)
@@ -109,6 +111,9 @@ elif [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[
     else
         echo "✗ WARNING: Could not resolve ${BACKEND_HOST} to IP after ${MAX_RETRIES} attempts"
         echo "  Attempting fallback solutions..."
+        # Keep original hostname for Host header
+        BACKEND_HOSTNAME="${BACKEND_HOST}"
+        export BACKEND_HOSTNAME
         
         # Fallback 1: Try using Railway public URL if available
         if [ -n "${RAILWAY_PUBLIC_DOMAIN}" ] && [ -n "${RAILWAY_SERVICE_NAME}" ]; then
