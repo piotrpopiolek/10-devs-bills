@@ -21,7 +21,7 @@ export const getProducts = async (params: ProductsQueryParams): Promise<ProductL
   queryParams.append('skip', skip.toString());
 
   try {
-    const response = await apiFetch(`/api/products?${queryParams.toString()}`);
+    const response = await apiFetch(`/api/product-indexes?${queryParams.toString()}`);
     
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);

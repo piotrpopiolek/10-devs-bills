@@ -49,7 +49,7 @@ export const GET: APIRoute = async ({ params, cookies }) => {
 
   // Use environment variable for backend URL
   const BACKEND_URL = import.meta.env.BACKEND_URL;
-  const API_URL = `${BACKEND_URL}/bills/${billId}`;
+  const API_URL = `${BACKEND_URL}/api/bills/${billId}`;
 
   console.log(`Proxying request to: ${API_URL}`);
 

@@ -73,21 +73,13 @@ export const GET: APIRoute = async ({ request, cookies }) => {
       }
     );
   }
-
-  // Ensure BACKEND_URL includes /api/v1 prefix
-  const baseUrl = BACKEND_URL.endsWith('/api/v1') 
-    ? BACKEND_URL 
-    : BACKEND_URL.endsWith('/api/v1/')
-    ? BACKEND_URL.slice(0, -1)
-    : `${BACKEND_URL}/api/v1`;
   
-  const API_URL = `${baseUrl}/reports/daily`;
-  const fullUrl = queryParams.toString() ? `${API_URL}?${queryParams.toString()}` : API_URL;
+  const API_URL = `${BACKEND_URL}/api/reports/daily`;
 
-  console.log(`Proxying request to: ${fullUrl}`);
+  console.log(`Proxying request to: ${API_URL}?${queryParams.toString()}`);
 
   try {
-    const response = await fetch(fullUrl, {
+    const response = await fetch(`${API_URL}?${queryParams.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

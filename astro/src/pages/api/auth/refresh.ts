@@ -53,14 +53,7 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // Ensure BACKEND_URL includes /api/v1 prefix
-  const baseUrl = BACKEND_URL.endsWith('/api/v1')
-    ? BACKEND_URL
-    : BACKEND_URL.endsWith('/api/v1/')
-    ? BACKEND_URL.slice(0, -1)
-    : `${BACKEND_URL}/api/v1`;
-
-  const API_URL = `${baseUrl}/auth/refresh`;
+  const API_URL = `${BACKEND_URL}/api/auth/refresh`;
 
   console.log(`Proxying request to: ${API_URL}`);
 

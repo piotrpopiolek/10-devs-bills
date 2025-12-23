@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'Paragony', href: '/bills', icon: Receipt },
   { title: 'Sklepy', href: '/shops', icon: Store },
-  { title: 'Produkty', href: '/products', icon: Package },
+  { title: 'Produkty', href: '/product-indexes', icon: Package },
   { title: 'Kandydaci', href: '/product-candidates', icon: UserCheck },
   { title: 'Kategorie', href: '/categories', icon: FolderTree },
 ];

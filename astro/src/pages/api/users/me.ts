@@ -39,14 +39,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     );
   }
 
-  // Ensure BACKEND_URL includes /api/v1 prefix
-  const baseUrl = BACKEND_URL.endsWith('/api/v1')
-    ? BACKEND_URL
-    : BACKEND_URL.endsWith('/api/v1/')
-    ? BACKEND_URL.slice(0, -1)
-    : `${BACKEND_URL}/api/v1`;
-
-  const API_URL = `${baseUrl}/users/me`;
+  const API_URL = `${BACKEND_URL}/api/users/me`;
 
   console.log(`Proxying request to: ${API_URL}`);
 

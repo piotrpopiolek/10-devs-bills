@@ -38,14 +38,7 @@ export const GET: APIRoute = async ({ request }) => {
     );
   }
 
-  // Ensure BACKEND_URL includes /api/v1 prefix
-  const baseUrl = BACKEND_URL.endsWith('/api/v1')
-    ? BACKEND_URL
-    : BACKEND_URL.endsWith('/api/v1/')
-    ? BACKEND_URL.slice(0, -1)
-    : `${BACKEND_URL}/api/v1`;
-
-  const API_URL = `${baseUrl}/auth/verify?token=${encodeURIComponent(token)}`;
+  const API_URL = `${BACKEND_URL}/api/auth/verify?token=${encodeURIComponent(token)}`;
 
   console.log(`Proxying request to: ${API_URL}`);
 

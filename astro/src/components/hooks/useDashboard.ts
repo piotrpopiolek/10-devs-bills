@@ -10,24 +10,24 @@ import { getBills } from '@/lib/services/bills';
 import { getCurrentMonth, getPreviousMonth, parseAmount } from '@/lib/utils/formatting';
 
 interface UseDashboardReturn {
-  // Daily expenses (z GET /api/v1/reports/daily)
+  // Daily expenses (z GET /api/reports/daily)
   dailyExpenses: number | null;
   isLoadingDaily: boolean;
   dailyError: Error | null;
 
-  // Monthly expenses (z GET /api/v1/reports/monthly)
+  // Monthly expenses (z GET /api/reports/monthly)
   monthlyExpenses: number | null;
   previousMonthExpenses: number | null;
   monthlyReport: MonthlyReportResponse | null;
   isLoadingMonthly: boolean;
   monthlyError: Error | null;
 
-  // Usage stats (z GET /api/v1/users/me)
+  // Usage stats (z GET /api/users/me)
   usageStats: UsageStats | null;
   isLoadingUsage: boolean;
   usageError: Error | null;
 
-  // Recent bills (z GET /api/v1/bills)
+  // Recent bills (z GET /api/bills)
   recentBills: BillResponse[];
   isLoadingBills: boolean;
   billsError: Error | null;

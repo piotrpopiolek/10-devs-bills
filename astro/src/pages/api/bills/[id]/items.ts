@@ -84,10 +84,12 @@ export const GET: APIRoute = async ({ params, url, cookies }) => {
 
   // Use environment variable for backend URL
   const BACKEND_URL = import.meta.env.BACKEND_URL;
-  const API_URL = `${BACKEND_URL}/bills/${billId}/items?${queryParams.toString()}`;
+  const API_URL = `${BACKEND_URL}/api/bills/${billId}/items`;
+
+  console.log(`Proxying request to: ${API_URL}?${queryParams.toString()}`);
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(`${API_URL}?${queryParams.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
