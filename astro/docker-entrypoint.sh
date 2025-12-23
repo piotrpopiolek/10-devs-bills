@@ -26,21 +26,67 @@ fi
 # Extract hostname from BACKEND_URL for DNS resolution check
 BACKEND_HOST=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||')
 
-# For local testing: If BACKEND_URL uses host.docker.internal, try to resolve it to IP
-# This helps when nginx resolver doesn't work with host.docker.internal
-if [ "${BACKEND_HOST}" = "host.docker.internal" ]; then
-    # Try to get IP for host.docker.internal
-    HOST_IP=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1)
+# Try to resolve hostname to IP (works for Railway and local Docker)
+# This helps when nginx resolver doesn't work with hostnames
+if [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    # Not an IP address, try to resolve it
+    echo "=== Resolving hostname: ${BACKEND_HOST} ==="
+    
+    # Try multiple resolution methods with retries (DNS may not be ready immediately)
+    HOST_IP=""
+    MAX_RETRIES=5
+    RETRY_DELAY=2
+    
+    for attempt in $(seq 1 ${MAX_RETRIES}); do
+        echo "Attempt ${attempt}/${MAX_RETRIES} to resolve ${BACKEND_HOST}..."
+        
+        # Method 1: Try getent hosts (works in Docker networks)
+        HOST_IP=$(getent hosts "${BACKEND_HOST}" 2>/dev/null | awk '{print $1}' | head -1)
+        if [ -n "${HOST_IP}" ]; then
+            echo "✓ Resolved ${BACKEND_HOST} to IP: ${HOST_IP} (via getent)"
+            break
+        fi
+        
+        # Method 2: Try with .railway.internal suffix (Railway specific)
+        HOST_IP=$(getent hosts "${BACKEND_HOST}.railway.internal" 2>/dev/null | awk '{print $1}' | head -1)
+        if [ -n "${HOST_IP}" ]; then
+            echo "✓ Resolved ${BACKEND_HOST}.railway.internal to IP: ${HOST_IP} (via getent)"
+            break
+        fi
+        
+        # Method 3: Try nslookup as fallback
+        if command -v nslookup >/dev/null 2>&1; then
+            HOST_IP=$(nslookup "${BACKEND_HOST}" ${RAW_RESOLVER} 2>/dev/null | grep -A 1 "Name:" | grep "Address:" | awk '{print $2}' | head -1)
+            if [ -n "${HOST_IP}" ]; then
+                echo "✓ Resolved ${BACKEND_HOST} to IP: ${HOST_IP} (via nslookup)"
+                break
+            fi
+        fi
+        
+        # If not resolved, wait before retry
+        if [ ${attempt} -lt ${MAX_RETRIES} ]; then
+            echo "  Waiting ${RETRY_DELAY}s before retry..."
+            sleep ${RETRY_DELAY}
+        fi
+    done
+    
+    # If we got an IP, replace hostname with IP in BACKEND_URL
     if [ -n "${HOST_IP}" ]; then
-        echo "Resolved host.docker.internal to IP: ${HOST_IP}"
-        # Replace host.docker.internal with IP in BACKEND_URL for nginx config
-        BACKEND_URL=$(echo "${BACKEND_URL}" | sed "s|host.docker.internal|${HOST_IP}|g")
+        echo "✓ Successfully resolved ${BACKEND_HOST} to IP: ${HOST_IP}"
+        # Replace hostname with IP in BACKEND_URL for nginx config
+        BACKEND_URL=$(echo "${BACKEND_URL}" | sed "s|${BACKEND_HOST}|${HOST_IP}|g")
         export BACKEND_URL
-        echo "Updated BACKEND_URL to use IP: ${BACKEND_URL}"
+        echo "✓ Updated BACKEND_URL to use IP: ${BACKEND_URL}"
     else
-        echo "WARNING: Could not resolve host.docker.internal to IP"
-        echo "For local testing, consider using IP directly in BACKEND_URL"
+        echo "✗ ERROR: Could not resolve ${BACKEND_HOST} to IP after ${MAX_RETRIES} attempts"
+        echo "  This will cause nginx to fail when proxying requests"
+        echo "  Please check:"
+        echo "    1. BACKEND_URL is set correctly: ${BACKEND_URL}"
+        echo "    2. Backend service is running and accessible"
+        echo "    3. Service name matches Railway Private Networking name"
+        echo "  Nginx will still start, but API requests will fail!"
     fi
+    echo "=========================================="
 fi
 
 # Log configuration for debugging
