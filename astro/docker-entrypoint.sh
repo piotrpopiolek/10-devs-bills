@@ -26,9 +26,34 @@ fi
 # Extract hostname from BACKEND_URL for DNS resolution check
 BACKEND_HOST=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||')
 
-# Try to resolve hostname to IP (works for Railway and local Docker)
+# Extract backend hostname for Host header (before any URL modifications)
+BACKEND_HOSTNAME=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||' | sed -E 's|/.*$||')
+export BACKEND_HOSTNAME
+
+# Check if BACKEND_URL is a public Railway domain (should use HTTPS, not resolve to IP)
+if echo "${BACKEND_URL}" | grep -qE '\.up\.railway\.app|\.railway\.app'; then
+    echo "=== Detected Railway public domain ==="
+    echo "Using public URL directly (no DNS resolution needed)"
+    # Ensure HTTPS is used for public domains
+    if echo "${BACKEND_URL}" | grep -qE '^http://'; then
+        BACKEND_URL=$(echo "${BACKEND_URL}" | sed 's|^http://|https://|')
+        export BACKEND_URL
+        echo "✓ Updated BACKEND_URL to use HTTPS: ${BACKEND_URL}"
+    fi
+    # Remove port if it's 8000 (Railway public URLs use default HTTPS port 443)
+    if echo "${BACKEND_URL}" | grep -qE ':8000'; then
+        BACKEND_URL=$(echo "${BACKEND_URL}" | sed 's|:8000||')
+        export BACKEND_URL
+        echo "✓ Removed port 8000 (using default HTTPS port 443): ${BACKEND_URL}"
+    fi
+    # Update BACKEND_HOSTNAME after URL modifications
+    BACKEND_HOSTNAME=$(echo "${BACKEND_URL}" | sed -E 's|^https?://||' | sed -E 's|:.*$||' | sed -E 's|/.*$||')
+    export BACKEND_HOSTNAME
+    echo "✓ Backend hostname for Host header: ${BACKEND_HOSTNAME}"
+    echo "======================================"
+# Try to resolve hostname to IP (works for Railway private networking and local Docker)
 # This helps when nginx resolver doesn't work with hostnames
-if [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+elif [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
     # Not an IP address, try to resolve it
     echo "=== Resolving hostname: ${BACKEND_HOST} ==="
     
@@ -73,10 +98,14 @@ if [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[0-
     # If we got an IP, replace hostname with IP in BACKEND_URL
     if [ -n "${HOST_IP}" ]; then
         echo "✓ Successfully resolved ${BACKEND_HOST} to IP: ${HOST_IP}"
+        # Keep original hostname for Host header (not IP)
+        BACKEND_HOSTNAME="${BACKEND_HOST}"
+        export BACKEND_HOSTNAME
         # Replace hostname with IP in BACKEND_URL for nginx config
         BACKEND_URL=$(echo "${BACKEND_URL}" | sed "s|${BACKEND_HOST}|${HOST_IP}|g")
         export BACKEND_URL
         echo "✓ Updated BACKEND_URL to use IP: ${BACKEND_URL}"
+        echo "✓ Backend hostname for Host header: ${BACKEND_HOSTNAME}"
     else
         echo "✗ WARNING: Could not resolve ${BACKEND_HOST} to IP after ${MAX_RETRIES} attempts"
         echo "  Attempting fallback solutions..."
@@ -128,7 +157,7 @@ echo "DNS_RESOLVER: ${RESOLVER} (raw: ${RAW_RESOLVER})"
 echo "=========================="
 
 # Substitute environment variables in nginx config template
-envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${PORT} ${BACKEND_URL} ${BACKEND_HOSTNAME}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Update resolver in generated config (replace 8.8.8.8 with actual resolver, keep ipv6=on)
 sed -i "s|resolver 8.8.8.8 valid=300s ipv6=on;|resolver ${RESOLVER} valid=300s ipv6=on;|" /etc/nginx/conf.d/default.conf
