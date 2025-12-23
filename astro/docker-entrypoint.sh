@@ -78,13 +78,44 @@ if [ -n "${BACKEND_HOST}" ] && ! echo "${BACKEND_HOST}" | grep -qE '^[0-9]+\.[0-
         export BACKEND_URL
         echo "✓ Updated BACKEND_URL to use IP: ${BACKEND_URL}"
     else
-        echo "✗ ERROR: Could not resolve ${BACKEND_HOST} to IP after ${MAX_RETRIES} attempts"
-        echo "  This will cause nginx to fail when proxying requests"
-        echo "  Please check:"
-        echo "    1. BACKEND_URL is set correctly: ${BACKEND_URL}"
-        echo "    2. Backend service is running and accessible"
-        echo "    3. Service name matches Railway Private Networking name"
-        echo "  Nginx will still start, but API requests will fail!"
+        echo "✗ WARNING: Could not resolve ${BACKEND_HOST} to IP after ${MAX_RETRIES} attempts"
+        echo "  Attempting fallback solutions..."
+        
+        # Fallback 1: Try using Railway public URL if available
+        if [ -n "${RAILWAY_PUBLIC_DOMAIN}" ] && [ -n "${RAILWAY_SERVICE_NAME}" ]; then
+            # Check if we're trying to connect to another Railway service
+            if [ "${RAILWAY_SERVICE_NAME}" != "${BACKEND_HOST}" ]; then
+                # Try to construct backend URL from Railway environment
+                # Railway sets RAILWAY_<SERVICE_NAME>_URL for other services
+                BACKEND_SERVICE_VAR=$(echo "${BACKEND_HOST}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                BACKEND_PUBLIC_URL=$(eval "echo \${RAILWAY_${BACKEND_SERVICE_VAR}_URL:-}")
+                
+                if [ -n "${BACKEND_PUBLIC_URL}" ]; then
+                    echo "✓ Found Railway public URL for ${BACKEND_HOST}: ${BACKEND_PUBLIC_URL}"
+                    BACKEND_URL="${BACKEND_PUBLIC_URL}"
+                    export BACKEND_URL
+                    echo "✓ Updated BACKEND_URL to use public URL: ${BACKEND_URL}"
+                fi
+            fi
+        fi
+        
+        # Fallback 2: If still not resolved and BACKEND_PUBLIC_URL is set, use it
+        if [ -z "${HOST_IP}" ] && [ -n "${BACKEND_PUBLIC_URL:-}" ]; then
+            echo "✓ Using BACKEND_PUBLIC_URL fallback: ${BACKEND_PUBLIC_URL}"
+            BACKEND_URL="${BACKEND_PUBLIC_URL}"
+            export BACKEND_URL
+        fi
+        
+        # Final check: if still using hostname, nginx will try to resolve at request time
+        if echo "${BACKEND_URL}" | grep -q "${BACKEND_HOST}"; then
+            echo "⚠ WARNING: Still using hostname ${BACKEND_HOST} in BACKEND_URL"
+            echo "  Nginx will attempt DNS resolution at request time"
+            echo "  This may fail if Railway DNS is not available"
+            echo "  Solutions:"
+            echo "    1. Use public backend URL: Set BACKEND_PUBLIC_URL=https://your-backend.up.railway.app"
+            echo "    2. Verify backend service name in Railway Private Networking"
+            echo "    3. Ensure backend service is running and in the same Railway project"
+        fi
     fi
     echo "=========================================="
 fi
