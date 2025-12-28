@@ -94,7 +94,11 @@ class AuthService(AppService[MagicLink, MagicLinkCreate, MagicLinkUpdate]):
             raise e
         
         # Construct full URL
+        # Ensure WEB_APP_URL has protocol (https:// for production, http:// for development)
         base_url = settings.WEB_APP_URL
+        if not base_url.startswith(('http://', 'https://')):
+            # Default to https:// for production (Railway uses HTTPS)
+            base_url = f"https://{base_url}"
         full_url = f"{base_url}/auth/verify?token={token}"
         
         return magic_link, full_url

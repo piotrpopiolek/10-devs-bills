@@ -101,7 +101,11 @@ class StorageService:
         if not self.use_supabase:
              # Fallback for local storage (assuming static file serving)
              # This requires static mounting in main.py
-             return f"{settings.WEB_APP_URL}/uploads/bills/{file_path}"
+             base_url = settings.WEB_APP_URL
+             if not base_url.startswith(('http://', 'https://')):
+                 # Default to https:// for production (Railway uses HTTPS)
+                 base_url = f"https://{base_url}"
+             return f"{base_url}/uploads/bills/{file_path}"
 
         if not self.supabase_client:
             return ""

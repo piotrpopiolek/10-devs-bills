@@ -59,7 +59,12 @@ app = FastAPI(
 if settings.ENV == "development":
     origins = ["http://localhost:3000", "http://localhost:4321"]  # Astro dev server
 else:
-    origins = [settings.WEB_APP_URL]  # Production domain
+    # Ensure WEB_APP_URL has protocol for CORS
+    web_app_url = settings.WEB_APP_URL
+    if not web_app_url.startswith(('http://', 'https://')):
+        # Default to https:// for production (Railway uses HTTPS)
+        web_app_url = f"https://{web_app_url}"
+    origins = [web_app_url]  # Production domain
 
 app.add_middleware(
     CORSMiddleware,
