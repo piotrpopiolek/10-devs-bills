@@ -179,11 +179,17 @@ export const useDashboard = (): UseDashboardReturn => {
 
   // Fetch all data on mount
   useEffect(() => {
-    // Fetch all data in parallel
-    fetchDaily();
-    fetchMonthly();
-    fetchUsage();
-    fetchBills();
+    // Small delay to ensure localStorage is available after page load/redirect
+    // This handles race conditions when redirecting from auth/verify
+    const timer = setTimeout(() => {
+      // Fetch all data in parallel
+      fetchDaily();
+      fetchMonthly();
+      fetchUsage();
+      fetchBills();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [fetchDaily, fetchMonthly, fetchUsage, fetchBills]);
 
   // Refetch all

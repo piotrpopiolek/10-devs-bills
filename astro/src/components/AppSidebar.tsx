@@ -72,26 +72,31 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className }) => {
 
   // Fetch user profile data
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!authService.isAuthenticated()) {
-        setIsLoading(false);
-        return;
-      }
+    // Small delay to ensure localStorage is available after page load/redirect
+    const timer = setTimeout(() => {
+      const fetchUserProfile = async () => {
+        if (!authService.isAuthenticated()) {
+          setIsLoading(false);
+          return;
+        }
 
-      try {
-        setIsLoading(true);
-        setError(null);
-        const profile = await authService.getUserProfile();
-        setUserProfile(profile);
-      } catch (err) {
-        console.error('Error fetching user profile:', err);
-        setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        try {
+          setIsLoading(true);
+          setError(null);
+          const profile = await authService.getUserProfile();
+          setUserProfile(profile);
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+          setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
+        } finally {
+          setIsLoading(false);
+        }
+      };
 
-    fetchUserProfile();
+      fetchUserProfile();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   // Calculate usage stats from user profile
@@ -215,26 +220,31 @@ export const MobileSidebar: React.FC = () => {
 
   // Fetch user profile data
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!authService.isAuthenticated()) {
-        setIsLoading(false);
-        return;
-      }
+    // Small delay to ensure localStorage is available after page load/redirect
+    const timer = setTimeout(() => {
+      const fetchUserProfile = async () => {
+        if (!authService.isAuthenticated()) {
+          setIsLoading(false);
+          return;
+        }
 
-      try {
-        setIsLoading(true);
-        setError(null);
-        const profile = await authService.getUserProfile();
-        setUserProfile(profile);
-      } catch (err) {
-        console.error('Error fetching user profile:', err);
-        setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        try {
+          setIsLoading(true);
+          setError(null);
+          const profile = await authService.getUserProfile();
+          setUserProfile(profile);
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+          setError(err instanceof Error ? err.message : 'Błąd pobierania danych');
+        } finally {
+          setIsLoading(false);
+        }
+      };
 
-    fetchUserProfile();
+      fetchUserProfile();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const isActive = (href: string) => {

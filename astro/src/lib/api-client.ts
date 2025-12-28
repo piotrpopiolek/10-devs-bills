@@ -15,8 +15,15 @@ export async function apiFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  // Get access token
-  const accessToken = authService.getAccessToken();
+  // Get access token - retry if not available (handles race conditions after login)
+  let accessToken = authService.getAccessToken();
+  
+  // If no token, wait a bit and retry (handles case where token was just saved)
+  if (!accessToken) {
+    console.log(`[apiFetch] No token found, waiting 50ms and retrying for ${url}`);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    accessToken = authService.getAccessToken();
+  }
 
   // Prepare headers
   const headers = new Headers(options.headers);
@@ -26,7 +33,7 @@ export async function apiFetch(
     headers.set('Authorization', `Bearer ${accessToken}`);
     console.log(`[apiFetch] Adding Authorization header for ${url}`);
   } else {
-    console.warn(`[apiFetch] No access token available for ${url}`);
+    console.warn(`[apiFetch] No access token available for ${url} after retry`);
   }
 
   // Make initial request
