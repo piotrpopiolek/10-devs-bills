@@ -22,13 +22,21 @@ export const VerifyView: React.FC = () => {
         console.log('Verification successful, setting session');
         authService.setSession(data);
         
+        // Verify that token was saved before redirecting
+        const savedToken = authService.getAccessToken();
+        if (!savedToken) {
+          throw new Error('Failed to save authentication token');
+        }
+        
+        console.log('Token saved successfully, redirecting to dashboard');
         setStatus('success');
         setMessage('Zalogowano pomyślnie! Przekierowywanie...');
         
-        // Redirect to dashboard after short delay
+        // Use replace instead of href to avoid back button issues
+        // Small delay to ensure localStorage is fully written
         setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1000);
+          window.location.replace('/dashboard');
+        }, 100);
         
       } catch (error) {
         console.error('Verification error:', error);

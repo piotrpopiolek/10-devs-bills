@@ -24,6 +24,9 @@ export async function apiFetch(
   // Add Authorization header if we have a token
   if (accessToken) {
     headers.set('Authorization', `Bearer ${accessToken}`);
+    console.log(`[apiFetch] Adding Authorization header for ${url}`);
+  } else {
+    console.warn(`[apiFetch] No access token available for ${url}`);
   }
 
   // Make initial request

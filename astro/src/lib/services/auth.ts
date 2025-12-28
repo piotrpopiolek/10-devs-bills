@@ -91,9 +91,19 @@ export const authService = {
 
   setSession(tokens: TokenResponse) {
     if (typeof window !== 'undefined') {
+      console.log('[authService] Setting session with tokens');
       localStorage.setItem('access_token', tokens.access_token);
       localStorage.setItem('refresh_token', tokens.refresh_token);
       localStorage.setItem('user', JSON.stringify(tokens.user));
+      
+      // Verify tokens were saved
+      const savedAccessToken = localStorage.getItem('access_token');
+      const savedRefreshToken = localStorage.getItem('refresh_token');
+      console.log('[authService] Tokens saved:', {
+        accessToken: savedAccessToken ? `${savedAccessToken.substring(0, 20)}...` : 'null',
+        refreshToken: savedRefreshToken ? `${savedRefreshToken.substring(0, 20)}...` : 'null',
+      });
+      
       // Set cookie for Astro middleware (optional, but good for SSR)
       // Access token expires in 15 minutes, cookie max-age should match
       document.cookie = `access_token=${tokens.access_token}; path=/; max-age=900; SameSite=Strict`;
