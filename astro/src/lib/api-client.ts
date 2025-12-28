@@ -15,6 +15,27 @@ export async function apiFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  // Ensure URL is relative (starts with /) to prevent Mixed Content errors
+  // If URL is absolute (starts with http:// or https://), it means BACKEND_URL leaked to client
+  // In production, all API calls should go through nginx proxy at /api/*
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    console.error(`[apiFetch] ERROR: Absolute URL detected: ${url}. This should be a relative path like /api/...`);
+    // Extract path from absolute URL and use relative path instead
+    try {
+      const urlObj = new URL(url);
+      url = urlObj.pathname + urlObj.search;
+      console.log(`[apiFetch] Converted to relative path: ${url}`);
+    } catch (e) {
+      console.error(`[apiFetch] Failed to parse URL: ${url}`, e);
+      throw new Error('Invalid API URL - must be relative path');
+    }
+  }
+  
+  // Ensure URL starts with /api/
+  if (!url.startsWith('/api/')) {
+    console.warn(`[apiFetch] URL does not start with /api/: ${url}`);
+  }
+
   // Get access token - retry if not available (handles race conditions after login)
   let accessToken = authService.getAccessToken();
   
