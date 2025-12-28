@@ -11,10 +11,7 @@ engine = create_async_engine(
     database_url,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
-    echo=settings.ENV == "development",
-    connect_args={
-        "statement_cache_size": 0
-    },
+    echo=settings.ENV == "development"
 )
 
 AsyncSessionLocal = async_sessionmaker(
