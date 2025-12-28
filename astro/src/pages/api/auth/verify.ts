@@ -22,6 +22,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   // Use environment variable for backend URL
+  // Ensure HTTPS to prevent Mixed Content errors
   const BACKEND_URL = import.meta.env.BACKEND_URL;
   
   if (!BACKEND_URL) {
@@ -38,7 +39,11 @@ export const GET: APIRoute = async ({ request }) => {
     );
   }
 
-  const API_URL = `${BACKEND_URL}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  // Ensure HTTPS for Railway public domains
+  const secureBackendUrl = BACKEND_URL.startsWith('http://') 
+    ? BACKEND_URL.replace('http://', 'https://')
+    : BACKEND_URL;
+  const API_URL = `${secureBackendUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
 
   console.log(`Proxying request to: ${API_URL}`);
 

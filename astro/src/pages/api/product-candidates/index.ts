@@ -74,8 +74,26 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   }
 
   // Use environment variable for backend URL
+  // Ensure HTTPS to prevent Mixed Content errors
   const BACKEND_URL = import.meta.env.BACKEND_URL;
-  const API_URL = `${BACKEND_URL}/api/product-candidates`;
+  if (!BACKEND_URL) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Backend URL not configured',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+  
+  // Ensure HTTPS for Railway public domains
+  const secureBackendUrl = BACKEND_URL.startsWith('http://') 
+    ? BACKEND_URL.replace('http://', 'https://')
+    : BACKEND_URL;
+  const API_URL = `${secureBackendUrl}/api/product-candidates`;
 
   console.log(`Proxying request to: ${API_URL}?${queryParams.toString()}`);
 
