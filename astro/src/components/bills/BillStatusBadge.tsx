@@ -15,6 +15,10 @@ const statusConfig: Record<ProcessingStatus, { label: string; variant: 'default'
     label: 'Przetwarzanie',
     variant: 'default',
   },
+  to_verify: {
+    label: 'Do weryfikacji',
+    variant: 'outline',
+  },
   completed: {
     label: 'Zakończony',
     variant: 'outline',
@@ -27,6 +31,16 @@ const statusConfig: Record<ProcessingStatus, { label: string; variant: 'default'
 
 export const BillStatusBadge: React.FC<BillStatusBadgeProps> = ({ status }) => {
   const config = statusConfig[status];
+  
+  // Fallback dla nieznanych statusów
+  if (!config) {
+    console.warn(`Unknown status: ${status}`);
+    return (
+      <Badge variant="outline">
+        {status}
+      </Badge>
+    );
+  }
   
   // For completed status, we need a custom green variant
   // Since Badge doesn't have a success variant by default, we'll use outline with custom styling
