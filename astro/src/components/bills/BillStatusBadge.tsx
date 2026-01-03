@@ -3,10 +3,10 @@ import { Badge } from '@/components/ui/badge';
 import type { ProcessingStatus } from '@/types';
 
 interface BillStatusBadgeProps {
-  status: ProcessingStatus;
+  status: ProcessingStatus | null | undefined;
 }
 
-const statusConfig: Record<ProcessingStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const statusConfig: Record<ProcessingStatus | string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: {
     label: 'Oczekujący',
     variant: 'secondary',
@@ -30,6 +30,15 @@ const statusConfig: Record<ProcessingStatus, { label: string; variant: 'default'
 };
 
 export const BillStatusBadge: React.FC<BillStatusBadgeProps> = ({ status }) => {
+  // Obsługa null/undefined
+  if (!status) {
+    return (
+      <Badge variant="outline">
+        Nieznany
+      </Badge>
+    );
+  }
+  
   const config = statusConfig[status];
   
   // Fallback dla nieznanych statusów
