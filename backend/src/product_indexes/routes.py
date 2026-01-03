@@ -19,7 +19,7 @@ async def get_product_index_service(session: Annotated[AsyncSession, Depends(get
 
 ServiceDependency = Annotated[ProductIndexService, Depends(get_product_index_service)]
 
-@router.get("/", response_model=ProductIndexListResponse, status_code=status.HTTP_200_OK, summary="List all product indexes")
+@router.get("", response_model=ProductIndexListResponse, status_code=status.HTTP_200_OK, summary="List all product indexes")
 async def get_product_indexes(user: CurrentUser, service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
     """
     List all product indexes.

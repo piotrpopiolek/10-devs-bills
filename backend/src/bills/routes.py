@@ -26,7 +26,7 @@ async def get_bill_service(
 
 ServiceDependency = Annotated[BillService, Depends(get_bill_service)]
 
-@router.get("/", response_model=BillListResponse, status_code=status.HTTP_200_OK, summary="List all bills for current user")
+@router.get("", response_model=BillListResponse, status_code=status.HTTP_200_OK, summary="List all bills for current user")
 async def get_bills(service: ServiceDependency, user: CurrentUser, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")
 ):
     """

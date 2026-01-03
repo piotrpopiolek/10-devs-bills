@@ -19,7 +19,7 @@ async def get_category_service(session: Annotated[AsyncSession, Depends(get_sess
 
 ServiceDependency = Annotated[CategoryService, Depends(get_category_service)]
 
-@router.get("/", response_model=CategoryListResponse, status_code=status.HTTP_200_OK, summary="List all categories")
+@router.get("", response_model=CategoryListResponse, status_code=status.HTTP_200_OK, summary="List all categories")
 async def get_categories(user: CurrentUser, service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
     """
     List all categories.

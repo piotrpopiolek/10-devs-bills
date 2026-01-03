@@ -20,7 +20,7 @@ async def get_product_candidate_service(session: Annotated[AsyncSession, Depends
 ServiceDependency = Annotated[ProductCandidateService, Depends(get_product_candidate_service)]
 
 
-@router.get("/", response_model=ProductCandidateListResponse, status_code=status.HTTP_200_OK, summary="List all product candidates")
+@router.get("", response_model=ProductCandidateListResponse, status_code=status.HTTP_200_OK, summary="List all product candidates")
 async def get_product_candidates(
     user: CurrentUser,
     service: ServiceDependency,

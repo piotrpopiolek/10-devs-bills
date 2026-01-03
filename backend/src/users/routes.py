@@ -59,7 +59,7 @@ async def get_current_user_profile(
         usage=UsageStats(**usage_data)
     )
 
-@router.get("/", response_model=UserListResponse, status_code=status.HTTP_200_OK, summary="List all users")
+@router.get("", response_model=UserListResponse, status_code=status.HTTP_200_OK, summary="List all users")
 async def get_users(user: CurrentUser, service: ServiceDependency, skip: int = Query(0, ge=0, description="Number of items to skip"), limit: int = Query(100, ge=1, le=100, description="Max number of items to return")):
     """
     List all users.
